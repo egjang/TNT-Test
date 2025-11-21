@@ -1,0 +1,50 @@
+import React, { useEffect, useState } from 'react'
+import { flags } from '../../src/config/flags'
+
+type Props = { selectedKey: string; onSelect: (key: string) => void }
+type Item = { key: string; label: string; children?: Item[] }
+
+const items: Item[] = [
+  { key: 'calendar', label: '달력' },
+  flags.demandManagement ? { key: 'demand', label: '수요관리', children: [
+    { key: 'demand:list', label: '수요조회' },
+    { key: 'demand:excel-upload', label: 'Excel Upload' },
+  ] } : null,
+  flags.customerManagement ? { key: 'customer', label: '고객관리', children: [
+    { key: 'customer:list', label: '거래처 조회' },
+    { key: 'customer:my-activities', label: '내활동' },
+    { key: 'customer:c360', label: 'C360' },
+    { key: 'customer:sales-activity-new', label: '영업활동 등록' },
+  ] } : null,
+].filter(Boolean) as Item[]
+
+export function MenuBackup({ selectedKey, onSelect }: Props) {
+  const [open, setOpen] = useState<Record<string, boolean>>({})
+  const [empId, setEmpId] = useState('')
+  const [loggedInEmpId, setLoggedInEmpId] = useState<string | null>(null)
+  const [authMsg, setAuthMsg] = useState<string | null>(null)
+  const [authBusy, setAuthBusy] = useState(false)
+
+  useEffect(() => { const saved = localStorage.getItem('tnt.sales.empId'); if (saved) setLoggedInEmpId(saved) }, [])
+  function toggle(key: string) { setOpen((prev) => ({ [key]: !prev[key] })) }
+  async function doLogin() { /* omitted in backup */ }
+  function doLogout() { setLoggedInEmpId(null); localStorage.removeItem('tnt.sales.empId') }
+
+  return (<nav className="menu" style={{ display:'flex', flexDirection:'column', height:'100%' }}>
+    <ul style={{ flex:1, overflow:'auto' }}>
+      {items.map((it) => (
+        <li key={it.key}>
+          <button data-key={it.key} className={selectedKey === it.key ? 'active' : ''} onClick={() => { if (it.children?.length) toggle(it.key); onSelect(it.key) }}>{it.label}</button>
+          {it.children?.length && open[it.key] ? (
+            <ul className="submenu">
+              {it.children.map((sub) => (
+                <li key={sub.key}><button data-key={sub.key} className={selectedKey === sub.key ? 'active' : ''} onClick={() => onSelect(sub.key)}>{sub.label}</button></li>
+              ))}
+            </ul>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  </nav>)
+}
+

@@ -1,0 +1,7 @@
+-- Flyway MSSQL baseline
+-- Create schema objects specific to MSSQL here
+-- Example:
+-- CREATE TABLE dbo.healthcheck (
+--   id INT IDENTITY PRIMARY KEY,
+--   created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+-- );

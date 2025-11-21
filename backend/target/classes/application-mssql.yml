@@ -1,0 +1,13 @@
+spring:
+  datasource:
+    url: jdbc:sqlserver://220.73.213.73:14233;encrypt=false;databaseName=TNT;trustServerCertificate=true
+    username: TNT_JHK
+    password: R9ekK7BfZe
+  jpa:
+    database-platform: org.hibernate.dialect.SQLServerDialect
+  flyway:
+    enabled: false
+
+logging:
+  level:
+    org.hibernate.SQL: INFO
