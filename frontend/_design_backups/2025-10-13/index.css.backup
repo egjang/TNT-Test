@@ -1,0 +1,12 @@
+:root {
+  --bg: #0f172a;
+  --panel: #111827;
+  --panel-2: #0b1220;
+  --text: #e5e7eb;
+  --muted: #9ca3af;
+  --accent: #3b82f6;
+  --resizer: #1f2937;
+  --header: #0b1220;
+  --border: #1f2937;
+}
+/* backup snapshot */

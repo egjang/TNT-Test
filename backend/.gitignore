@@ -1,0 +1,3 @@
+# Ignore local-only Spring profiles containing developer credentials
+src/main/resources/application-*-local.yml
+
