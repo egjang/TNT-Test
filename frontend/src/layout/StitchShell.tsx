@@ -1,10 +1,11 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { Menu } from '../features/menu/Menu'
 import { MainView } from '../features/main/MainView'
 import { VisitPlanPanel } from '../features/customer/VisitPlanPanel'
 import { MissingTransactionsPanel } from '../features/customer/MissingTransactionsPanel'
 import { DemandTargetsPanel } from '../features/demand/DemandTargetsPanel'
 import { InventoryResultPanel } from '../features/inventory/InventoryResultPanel'
+import { PromotionPanel } from '../features/inventory/PromotionPanel'
 
 type Props = {
   selectedKey: string
@@ -12,6 +13,36 @@ type Props = {
 }
 
 export function StitchShell({ selectedKey, onSelect }: Props) {
+  const [expirySelectionCount, setExpirySelectionCount] = useState(0)
+
+  // Debug logging
+  useEffect(() => {
+    console.log('[StitchShell] selectedKey:', selectedKey)
+    console.log('[StitchShell] is inventory:expiry-ag?', selectedKey === 'inventory:expiry-ag')
+  }, [selectedKey])
+
+  useEffect(() => {
+    const handler = (event: CustomEvent<{ count?: number }>) => {
+      const count = Number(event.detail?.count ?? 0)
+      setExpirySelectionCount(Number.isFinite(count) ? count : 0)
+    }
+
+    window.addEventListener('tnt.inventory.expiry.selection', handler as EventListener)
+    return () => window.removeEventListener('tnt.inventory.expiry.selection', handler as EventListener)
+  }, [])
+
+  const handleApplyPromotion = (promotionId: number) => {
+    try {
+      window.dispatchEvent(
+        new CustomEvent('tnt.inventory.apply-promotion', {
+          detail: { promotionId },
+        })
+      )
+    } catch (err) {
+      console.error('프로모션 적용 이벤트 전파 실패:', err)
+    }
+  }
+
   return (
     <div className="stitch-shell">
       <aside className="stitch-aside">
@@ -54,6 +85,10 @@ export function StitchShell({ selectedKey, onSelect }: Props) {
           ) : selectedKey.startsWith('demand') ? (
             <div className="fill">
               <DemandTargetsPanel />
+            </div>
+          ) : selectedKey === 'inventory:expiry-ag' ? (
+            <div className="fill">
+              <PromotionPanel selectedItemsCount={expirySelectionCount} onApplyPromotion={handleApplyPromotion} />
             </div>
           ) : selectedKey === 'inventory' || selectedKey.includes('재고') ? (
             <div className="fill">

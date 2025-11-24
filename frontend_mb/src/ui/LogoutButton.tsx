@@ -1,5 +1,5 @@
 import React from 'react'
-import logoutIconUrl from '../assets/icons/logout.svg'
+import { LogOut } from 'lucide-react'
 
 type Props = {
   onClick: () => void
@@ -16,7 +16,7 @@ export function LogoutButton({ onClick }: Props) {
       title="로그아웃"
       aria-label="로그아웃"
     >
-      <img src={logoutIconUrl} className="icon" alt="" />
+      <LogOut className="icon" size={20} />
     </span>
   )
 }

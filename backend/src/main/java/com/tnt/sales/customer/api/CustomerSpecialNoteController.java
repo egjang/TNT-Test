@@ -79,7 +79,7 @@ public class CustomerSpecialNoteController {
         }
 
         try {
-            List<Map<String, Object>> rows = jdbc.query(SELECT_NOTES_SQL, new Object[]{customerId}, (rs, rowNum) -> mapRow(rs));
+            List<Map<String, Object>> rows = jdbc.query(SELECT_NOTES_SQL, (rs, rowNum) -> mapRow(rs), customerId);
             return ResponseEntity.ok(rows);
         } catch (Exception e) {
             return ResponseEntity.status(500).body(Map.of("error", "list_failed", "message", e.getMessage()));
@@ -104,16 +104,14 @@ public class CustomerSpecialNoteController {
         try {
             Long insertedId = jdbc.queryForObject(
                     INSERT_NOTE_SQL,
-                    new Object[]{
-                            customerId,
-                            title,
-                            request.noteContent.trim(),
-                            noteType,
-                            importance,
-                            creator,
-                            request.updatedBy != null ? request.updatedBy : creator
-                    },
-                    Long.class
+                    Long.class,
+                    customerId,
+                    title,
+                    request.noteContent.trim(),
+                    noteType,
+                    importance,
+                    creator,
+                    request.updatedBy != null ? request.updatedBy : creator
             );
             if (insertedId == null) {
                 throw new IllegalStateException("failed to insert note");
@@ -149,16 +147,14 @@ public class CustomerSpecialNoteController {
         try {
             Long updatedId = jdbc.queryForObject(
                     UPDATE_NOTE_SQL,
-                    new Object[]{
-                            title,
-                            request.noteContent.trim(),
-                            noteType,
-                            importance,
-                            editor,
-                            noteId,
-                            customerId
-                    },
-                    Long.class
+                    Long.class,
+                    title,
+                    request.noteContent.trim(),
+                    noteType,
+                    importance,
+                    editor,
+                    noteId,
+                    customerId
             );
             if (updatedId == null) {
                 throw new IllegalStateException("failed to update note");
@@ -217,14 +213,15 @@ public class CustomerSpecialNoteController {
     private Map<String, Object> fetchNoteById(Long customerId, Long noteId) {
         return jdbc.queryForObject(
                 SELECT_NOTE_BY_ID_SQL,
-                new Object[]{customerId, noteId},
                 (rs, rowNum) -> {
                     try {
                         return mapRow(rs);
                     } catch (SQLException ex) {
                         throw new IllegalStateException(ex);
                     }
-                }
+                },
+                customerId,
+                noteId
         );
     }
 

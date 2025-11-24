@@ -86,11 +86,16 @@ public class OrdersQueryController {
             if (top <= 0) top = 100;
             if (offset < 0) offset = 0;
             if (limit <= 0) limit = 100; if (limit > 1000) limit = 1000;
-            String db = "TNT";
-            if (company != null) {
-                String c = company.trim().toUpperCase();
-                if ("DYS".equals(c)) db = "DYS"; else db = "TNT";
+
+            String companyUpper = (company != null) ? company.trim().toUpperCase() : "TNT";
+
+            // Handle ALL: UNION TNT and DYS
+            if ("ALL".equals(companyUpper)) {
+                return handleUnionQuery(fromDate, toDate, salesEmpSeq, offset, limit);
             }
+
+            String db = "TNT";
+            if ("DYS".equals(companyUpper)) db = "DYS";
             // Parse input dates (YY-MM-DD) if provided
             LocalDate from = parseYyMmDd(fromDate);
             LocalDate to = parseYyMmDd(toDate);
@@ -137,6 +142,219 @@ public class OrdersQueryController {
                     "message", e.getMessage()
             ));
         }
+    }
+
+    /**
+     * Handle ALL company query: UNION TNT and DYS databases
+     */
+    private ResponseEntity<?> handleUnionQuery(String fromDate, String toDate, Long salesEmpSeq, int offset, int limit) {
+        try {
+            LocalDate from = parseYyMmDd(fromDate);
+            LocalDate to = parseYyMmDd(toDate);
+
+            // Query both TNT and DYS
+            List<Map<String, Object>> tntRows = queryCompanyData("TNT", from, to, salesEmpSeq, 0, limit * 2);
+            List<Map<String, Object>> dysRows = queryCompanyData("DYS", from, to, salesEmpSeq, 0, limit * 2);
+
+            // Add CompanyType field to distinguish rows
+            for (Map<String, Object> row : tntRows) {
+                row.put("CompanyType", "TNT");
+            }
+            for (Map<String, Object> row : dysRows) {
+                row.put("CompanyType", "DYS");
+            }
+
+            // Combine and sort by LastDateTime DESC
+            List<Map<String, Object>> combined = new ArrayList<>();
+            combined.addAll(tntRows);
+            combined.addAll(dysRows);
+
+            // Sort by LastDateTime DESC (try to find the date field)
+            combined.sort((a, b) -> {
+                Object aDate = a.get("LastDateTime");
+                Object bDate = b.get("LastDateTime");
+                if (aDate == null && bDate == null) return 0;
+                if (aDate == null) return 1;
+                if (bDate == null) return -1;
+                // Compare as strings (descending)
+                return String.valueOf(bDate).compareTo(String.valueOf(aDate));
+            });
+
+            // Apply offset and limit
+            int start = Math.min(offset, combined.size());
+            int end = Math.min(start + limit, combined.size());
+            List<Map<String, Object>> paged = combined.subList(start, end);
+
+            // Enrich with PG data (we need to handle both TNT and DYS)
+            List<Map<String, Object>> enriched = enrichWithPgUnion(paged);
+            List<Map<String, Object>> out = filterColumns(enriched);
+
+            return ResponseEntity.ok(out);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of(
+                    "error", "union_query_failed",
+                    "message", e.getMessage()
+            ));
+        }
+    }
+
+    /**
+     * Query single company database
+     */
+    private List<Map<String, Object>> queryCompanyData(String db, LocalDate from, LocalDate to, Long salesEmpSeq, int offset, int limit) {
+        String[] orderVariants = new String[] {
+                "ORDER BY LastDateTime DESC",
+                "ORDER BY OrderTextDate DESC, OrderTextNo DESC",
+                "ORDER BY OrderTextDat DESC, OrderTextNoe DESC",
+                "ORDER BY OrderTextNo DESC",
+                ""
+        };
+
+        for (String ord : orderVariants) {
+            try {
+                String col = ord.contains("OrderTextDate") ? "OrderTextDate" : (ord.contains("OrderTextDat") ? "OrderTextDat" : null);
+                String where = "";
+                List<Object> args = new ArrayList<>();
+
+                if (col != null && (from != null || to != null)) {
+                    if (from != null) {
+                        where += (where.isEmpty() ? " WHERE " : " AND ") + "CAST(" + col + " AS date) >= ?";
+                        args.add(java.sql.Date.valueOf(from));
+                    }
+                    if (to != null) {
+                        where += (where.isEmpty() ? " WHERE " : " AND ") + "CAST(" + col + " AS date) <= ?";
+                        args.add(java.sql.Date.valueOf(to));
+                    }
+                }
+                if (salesEmpSeq != null) {
+                    where += (where.isEmpty() ? " WHERE " : " AND ") + "SalesEmpSeq = ?";
+                    args.add(salesEmpSeq);
+                }
+
+                String ordClause = (ord == null || ord.isBlank()) ? "ORDER BY 1" : ord;
+                String sql = ("SELECT * FROM " + db + ".dbo.tnt_TSLOrderText " + where + " " + ordClause + " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY").trim();
+                args.add(offset);
+                args.add(limit);
+
+                return mssql.queryForList(sql, args.toArray());
+            } catch (Exception ignored) {
+            }
+        }
+        return new ArrayList<>();
+    }
+
+    /**
+     * Enrich UNION results with PG data - handle both TNT and DYS employee sequences
+     */
+    private List<Map<String, Object>> enrichWithPgUnion(List<Map<String, Object>> rows) {
+        // Collect keys
+        Set<Long> custIds = new HashSet<>();
+        Set<Long> tntEmpSeqs = new HashSet<>();
+        Set<Long> dysEmpSeqs = new HashSet<>();
+
+        for (Map<String, Object> r : rows) {
+            Long c = readLong(r, "CustSeq");
+            if (c != null) custIds.add(c);
+
+            Long s = readLong(r, "SalesEmpSeq");
+            String companyType = String.valueOf(r.get("CompanyType"));
+            if (s != null) {
+                if ("TNT".equals(companyType)) {
+                    tntEmpSeqs.add(s);
+                } else if ("DYS".equals(companyType)) {
+                    dysEmpSeqs.add(s);
+                }
+            }
+        }
+
+        // Build customer map
+        Map<Long, String> custMap = new HashMap<>();
+        Map<Long, String> regionGroupMap = new HashMap<>();
+        if (!custIds.isEmpty()) {
+            String in = joinIds(custIds);
+            try {
+                String sql = "SELECT customer_seq, customer_name, addr_province_name, addr_city_name FROM public.customer WHERE customer_seq IN " + in;
+                pg.query(sql, rs -> {
+                    long id = rs.getLong("customer_seq");
+                    String name = rs.getString("customer_name");
+                    String province = rs.getString("addr_province_name");
+                    String city = rs.getString("addr_city_name");
+                    custMap.put(id, name);
+
+                    List<String> parts = new ArrayList<>();
+                    if (province != null && !province.trim().isEmpty()) parts.add(province.trim());
+                    if (city != null && !city.trim().isEmpty()) parts.add(city.trim());
+                    String regionGroup = String.join(" ", parts);
+                    if (!regionGroup.isEmpty()) regionGroupMap.put(id, regionGroup);
+                });
+            } catch (Exception ignore) {
+            }
+        }
+
+        // Build employee maps for both TNT and DYS
+        Map<Long, String> tntEmpMap = new HashMap<>();
+        if (!tntEmpSeqs.isEmpty()) {
+            String in = joinIds(tntEmpSeqs);
+            try {
+                String sql = "SELECT emp_name, tnt_emp_seq FROM public.employee WHERE tnt_emp_seq IN " + in;
+                pg.query(sql, rs -> {
+                    long id = rs.getLong("tnt_emp_seq");
+                    String name = rs.getString("emp_name");
+                    tntEmpMap.put(id, name);
+                });
+            } catch (Exception ignore) {
+            }
+        }
+
+        Map<Long, String> dysEmpMap = new HashMap<>();
+        if (!dysEmpSeqs.isEmpty()) {
+            String in = joinIds(dysEmpSeqs);
+            try {
+                String sql = "SELECT emp_name, dys_emp_seq FROM public.employee WHERE dys_emp_seq IN " + in;
+                pg.query(sql, rs -> {
+                    long id = rs.getLong("dys_emp_seq");
+                    String name = rs.getString("emp_name");
+                    dysEmpMap.put(id, name);
+                });
+            } catch (Exception ignore) {
+            }
+        }
+
+        // Replace values in rows
+        List<Map<String, Object>> out = new ArrayList<>(rows.size());
+        for (Map<String, Object> r : rows) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            String companyType = String.valueOf(r.get("CompanyType"));
+
+            for (Map.Entry<String, Object> e : r.entrySet()) {
+                String k = e.getKey();
+                Object v = e.getValue();
+
+                if ("CustSeq".equalsIgnoreCase(k)) {
+                    Long id = readLong(r, k);
+                    String name = (id != null) ? custMap.get(id) : null;
+                    m.put(e.getKey(), name != null ? name : v);
+                    if (id != null && regionGroupMap.containsKey(id)) {
+                        m.put("RegionGroup", regionGroupMap.get(id));
+                    }
+                } else if ("SalesEmpSeq".equalsIgnoreCase(k)) {
+                    Long id = readLong(r, k);
+                    String name = null;
+                    if (id != null) {
+                        if ("TNT".equals(companyType)) {
+                            name = tntEmpMap.get(id);
+                        } else if ("DYS".equals(companyType)) {
+                            name = dysEmpMap.get(id);
+                        }
+                    }
+                    m.put(e.getKey(), name != null ? name : v);
+                } else {
+                    m.put(k, v);
+                }
+            }
+            out.add(m);
+        }
+        return out;
     }
 
     private List<Map<String,Object>> filterColumns(List<Map<String,Object>> rows) {

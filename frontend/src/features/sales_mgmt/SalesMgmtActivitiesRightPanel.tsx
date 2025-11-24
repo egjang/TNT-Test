@@ -319,8 +319,8 @@ export function SalesMgmtActivitiesRightPanel() {
     return `${mm}-${dd} ${hh}:${mi}`
   }
 
-  // Chart state for 4-week trend (recent activity trend)
-  const [chart, setChart] = useState<{ weeks: string[]; weekDates: string[]; counts: number[]; max: number; customerName?: string } | null>(null)
+  // Chart state for quarterly completed activities
+  const [chart, setChart] = useState<{ quarters: number[]; counts: number[]; max: number; customerName?: string } | null>(null)
   const [chartLoading, setChartLoading] = useState(false)
   const [chartError, setChartError] = useState<string | null>(null)
   const chartRef = useRef<HTMLDivElement | null>(null)
@@ -338,92 +338,31 @@ export function SalesMgmtActivitiesRightPanel() {
     return () => ro.disconnect()
   }, [])
 
-  function weekMonday(d: Date) {
-    const base = new Date(d.getFullYear(), d.getMonth(), d.getDate())
-    const day = base.getDay() // 0=Sun..6=Sat
-    const diffToMon = (day + 6) % 7 // Mon=0
-    const monday = new Date(base)
-    monday.setDate(base.getDate() - diffToMon)
-    monday.setHours(0,0,0,0)
-    return monday
-  }
-  function weekKey(d: Date) {
-    const monday = weekMonday(d)
-    const mm = String(monday.getMonth() + 1).padStart(2, '0')
-    const dd = String(monday.getDate()).padStart(2, '0')
-    return `${mm}-${dd}`
-  }
-  function weekOfYear(d: Date) {
-    // ISO 8601 week number calculation
-    const target = new Date(d.valueOf())
-    const dayNr = (d.getDay() + 6) % 7 // Mon=0, Sun=6
-    target.setDate(target.getDate() - dayNr + 3) // Nearest Thursday
-    const jan4 = new Date(target.getFullYear(), 0, 4)
-    const dayDiff = (target.valueOf() - jan4.valueOf()) / 86400000
-    const weekNum = 1 + Math.floor(dayDiff / 7)
-    return weekNum
-  }
-
-  async function showCustomerWeekly(row: Activity) {
+  async function showCustomerQuarterly(row: Activity) {
     setChart(null)
     setChartLoading(true)
     setChartError(null)
     try {
-      // 4-week trend: recent 4 weeks ending last week (avoid partial current week)
-      const prev = getWeekRange(-1)
-      const end = new Date(prev.end)
-      end.setHours(23,59,59,999)
-      const startMonday = new Date(prev.start)
-      startMonday.setDate(startMonday.getDate() - 7 * 3) // 4 weeks window
-      startMonday.setHours(0,0,0,0)
+      const currentYear = new Date().getFullYear()
       const p = new URLSearchParams()
-      p.set('mineOnly', 'false')
-      p.append('status', 'completed')
-      p.set('start', startMonday.toISOString())
-      p.set('end', end.toISOString())
+      p.set('year', String(currentYear))
       if (row.sfAccountId) {
         p.set('sfAccountId', String(row.sfAccountId))
+      } else if (row.sfLeadId) {
+        p.set('sfLeadId', String(row.sfLeadId))
       } else if (row.customerName) {
         p.set('customerName', String(row.customerName))
       }
-      console.log('[Chart Debug] API params:', {
-        customerName: row.customerName,
-        sfAccountId: row.sfAccountId,
-        start: startMonday.toISOString(),
-        end: end.toISOString(),
-        url: `/api/v1/sales-activities?${p.toString()}`
-      })
-      const res = await fetch(`/api/v1/sales-activities?${p.toString()}`)
+      const res = await fetch(`/api/v1/sales-activities/quarterly-completed?${p.toString()}`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const list = await res.json()
-      console.log('[Chart Debug] API response:', list)
-      const buckets = new Map<string, number>()
-      // Initialize 4-week buckets from computed start Monday
-      const weeks: string[] = []
-      const weekDates: string[] = []
-      const tmp = new Date(startMonday)
-      for (let i = 0; i < 4; i++) {
-        const monday = weekMonday(tmp)
-        const label = weekKey(monday)
-        weeks.push(label)
-        weekDates.push(monday.toISOString())
-        buckets.set(label, 0)
-        tmp.setDate(tmp.getDate() + 7)
-      }
-      console.log('[Chart Debug] Week buckets initialized:', Array.from(buckets.keys()))
-      for (const r of (Array.isArray(list) ? list : [])) {
-        const dt = r.plannedStartAt ? new Date(r.plannedStartAt) : null
-        if (!dt || isNaN(dt.getTime())) continue
-        const label = weekKey(dt)
-        console.log('[Chart Debug] Activity date:', r.plannedStartAt, '-> label:', label, 'has bucket:', buckets.has(label))
-        if (buckets.has(label)) buckets.set(label, (buckets.get(label) || 0) + 1)
-      }
-      const counts = weeks.map((w) => buckets.get(w) || 0)
-      const max = 20 // Fixed Y-axis max
-      console.log('[Chart Debug] Final counts:', counts, 'max:', max)
-      setChart({ weeks, weekDates, counts, max, customerName: row.customerName })
+      const data = await res.json()
+      const quarters = (Array.isArray(data) ? data : []).map((d: any) => Number(d.quarter))
+      const counts = (Array.isArray(data) ? data : []).map((d: any) => Number(d.count))
+      const maxCount = Math.max(...counts, 0)
+      const max = Math.max(20, Math.ceil(maxCount / 10) * 10) // Round up to nearest 10, min 20
+      setChart({ quarters, counts, max, customerName: row.customerName })
     } catch (e: any) {
-      setChartError('최근 4주 완료 활동 집계를 불러오지 못했습니다')
+      setChartError('분기별 완료 활동 집계를 불러오지 못했습니다')
     } finally {
       setChartLoading(false)
     }
@@ -772,10 +711,10 @@ export function SalesMgmtActivitiesRightPanel() {
             ) : items.map((it) => (
               <tr
                 key={it.id}
-                onClick={() => showCustomerWeekly(it)}
+                onClick={() => showCustomerQuarterly(it)}
                 onContextMenu={(e) => handleActivityContextMenu(e, it)}
                 style={{ cursor: 'pointer' }}
-                title="좌클릭: 주간 완료 활동 집계 / 우클릭: 활동 상세"
+                title="좌클릭: 분기별 완료 활동 집계 / 우클릭: 활동 상세"
               >
                 <td title={it.customerName || ''}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -806,95 +745,53 @@ export function SalesMgmtActivitiesRightPanel() {
           </tbody>
         </table>
       </div>
-      {/* Weekly completed chart */}
+      {/* Quarterly completed chart */}
       <div style={{ marginTop: 8, flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        {chartLoading ? <div className="muted" style={{ fontSize: 12 }}>주간 집계를 불러오는 중…</div> : null}
+        {chartLoading ? <div className="muted" style={{ fontSize: 12 }}>분기별 집계를 불러오는 중…</div> : null}
         {chartError ? <div className="error" style={{ fontSize: 12 }}>{chartError}</div> : null}
         {chart && (() => {
-          const n = chart.weeks.length
-          const gap = 6
+          const n = chart.quarters.length
+          const gap = 12
           const yAxisW = 32
-          const innerW = Math.max(0, chartWidth - yAxisW - 8)
-          const barW = n > 0 ? Math.max(12, Math.min(36, Math.floor((innerW - gap * (n - 1)) / n))) : 14
-          const barAreaH = 120 // drawable height for bars (align axes/lines)
-          // Year-based week labels: N주차 based on each week's Monday
-          const weekLabels = chart.weekDates.map((iso) => {
-            const monday = new Date(iso)
-            const n = weekOfYear(monday)
-            return `${n}주차`
-          })
-          // Group consecutive weeks by month (year-aware) for exact alignment
-          const weekMonth = chart.weekDates.map((iso) => {
-            const d = new Date(iso)
-            const y = d.getFullYear()
-            const m = d.getMonth() + 1
-            return { key: `${y}-${String(m).padStart(2, '0')}`, label: `${m}월` }
-          })
-          const groups: { key: string; label: string; start: number; count: number }[] = []
-          for (let i = 0; i < weekMonth.length; i++) {
-            if (i === 0) {
-              groups.push({ key: weekMonth[i].key, label: weekMonth[i].label, start: 0, count: 1 })
-            } else if (weekMonth[i].key === weekMonth[i - 1].key) {
-              groups[groups.length - 1].count += 1
-            } else {
-              groups.push({ key: weekMonth[i].key, label: weekMonth[i].label, start: i, count: 1 })
-            }
-          }
-          const groupWidth = (gCount: number) => gCount * barW + (gCount - 1) * gap
+          const innerW = Math.max(0, chartWidth - yAxisW - 16)
+          const barW = n > 0 ? Math.floor((innerW - gap * (n - 1)) / n) : 60
+          const barAreaH = 140
+          const currentYear = new Date().getFullYear()
           return (
-            <div ref={chartRef} className="card" style={{ padding: 8, border: '1px solid var(--border)', borderRadius: 10 }}>
-              {/* Axis + Bars */}
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6 }}>
-                {/* Y-axis (max and 0) */}
-                <div style={{ height: barAreaH, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', paddingRight: 6, color: 'var(--muted)', fontSize: 10 }}>
+            <div ref={chartRef} className="card" style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: 'var(--text)' }}>
+                {chart.customerName || '거래처'} - {currentYear}년 분기별 완료 활동
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+                {/* Y-axis */}
+                <div style={{ height: barAreaH, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', paddingRight: 6, color: 'var(--muted)', fontSize: 10, fontWeight: 500 }}>
                   <div>{chart.max}</div>
                   <div>0</div>
                 </div>
                 <div style={{ position: 'relative', flex: 1 }}>
                   {/* Baseline */}
                   <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, background: 'var(--border)' }} />
-                  {/* Bars grouped by month with month boundary line at group start */}
-                  <div style={{ display: 'flex', alignItems: 'flex-end', height: barAreaH }}>
-                    {groups.map((g, gi) => (
-                      <div key={`g-${g.key}-${gi}`} style={{ display: 'flex', flexDirection: 'column', position: 'relative', marginLeft: gi > 0 ? gap : 0 }}>
-                        {gi > 0 ? (
-                          <div style={{ position: 'absolute', left: 0, bottom: 0, height: barAreaH, width: 1, background: 'var(--border)', opacity: 0.5 }} />
-                        ) : null}
-                        <div style={{ display: 'flex', alignItems: 'flex-end', gap: gap, height: barAreaH }}>
-                          {Array.from({ length: g.count }).map((_, j) => {
-                            const idx = g.start + j
-                            const w = chart.weeks[idx]
-                            const v = chart.counts[idx]
-                            const hPct = chart.max > 0 ? Math.round((v / chart.max) * 100) : 0
-                            return (
-                              <div key={w} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', width: barW, height: barAreaH }}>
-                                {v > 0 && (
-                                  <div style={{ height: `${hPct}%`, minHeight: 8, width: Math.max(8, barW - 6), background: '#3b82f6', borderRadius: 4 }} title={`${weekLabels[idx]}: ${v}건`} />
-                                )}
-                              </div>
-                            )
-                          })}
+                  {/* Bars */}
+                  <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', height: barAreaH, gap: gap }}>
+                    {chart.quarters.map((q, idx) => {
+                      const v = chart.counts[idx]
+                      const hPct = chart.max > 0 ? Math.round((v / chart.max) * 100) : 0
+                      return (
+                        <div key={q} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', width: barW, height: barAreaH }}>
+                          {v > 0 && (
+                            <>
+                              <div style={{ fontSize: 11, fontWeight: 600, color: '#3b82f6', marginBottom: 4 }}>{v}</div>
+                              <div style={{ height: `${hPct}%`, minHeight: 8, width: '100%', maxWidth: barW - 8, background: 'linear-gradient(180deg, #3b82f6, #6366f1)', borderRadius: 6 }} title={`${q}분기: ${v}건`} />
+                            </>
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
-                  {/* Week labels grouped by month (keeps gap consistent) */}
-                  <div style={{ display: 'flex', marginTop: 4 }}>
-                    {groups.map((g, gi) => (
-                      <div key={`gl-${g.key}-${gi}`} style={{ display: 'flex', gap: gap, marginLeft: gi > 0 ? gap : 0 }}>
-                        {Array.from({ length: g.count }).map((_, j) => {
-                          const idx = g.start + j
-                          return (
-                            <div key={`w-${idx}`} className="muted" style={{ minWidth: barW, textAlign: 'center', fontSize: 10, whiteSpace: 'nowrap' }}>{weekLabels[idx]}</div>
-                          )
-                        })}
-                      </div>
-                    ))}
-                  </div>
-                  {/* Month labels spanning each group width */}
-                  <div style={{ display: 'flex', marginTop: 2 }}>
-                    {groups.map((g, gi) => (
-                      <div key={`gm-${g.key}-${gi}`} style={{ width: groupWidth(g.count), marginLeft: gi > 0 ? gap : 0, textAlign: 'center', fontSize: 10, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{g.label}</div>
+                  {/* Quarter labels */}
+                  <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: 6, gap: gap }}>
+                    {chart.quarters.map((q) => (
+                      <div key={`label-${q}`} className="muted" style={{ width: barW, textAlign: 'center', fontSize: 11, fontWeight: 600 }}>Q{q}</div>
                     ))}
                   </div>
                 </div>

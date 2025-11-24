@@ -1,21 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { flags } from '../../config/flags'
 import { LogoutButton } from '../../ui/LogoutButton'
-import loginIconUrl from '../../assets/icons/login.svg'
-import folderIconUrl from '../../assets/icons/folder.svg'
-import screenIconUrl from '../../assets/icons/screen.svg'
-import barChartIconUrl from '../../assets/icons/bar-chart.svg'
-import targetIconUrl from '../../assets/icons/target.svg'
-import userIconUrl from '../../assets/icons/user.svg'
-import complaintIconUrl from '../../assets/icons/megaphone.svg'
-import inquiryIconUrl from '../../assets/icons/headset.svg'
-import moneyIconUrl from '../../assets/icons/money.svg'
-import demandIconUrl from '../../assets/icons/demand.svg'
-import docIconUrl from '../../assets/icons/doc.svg'
-import settingsIconUrl from '../../assets/icons/settings.svg'
-import warehouseIconUrl from '../../assets/icons/warehouse.svg'
+import { LogIn, Settings, ChevronRight, type LucideIcon } from 'lucide-react'
 import { getMenuVisibility, isMenuEnabled, onMenuVisibilityChange } from '../../config/menuVisibility'
-import { getAllMenuItems } from './items'
+import { getAllMenuItems, type MenuItem } from './items'
 
 type Props = {
   selectedKey: string
@@ -25,7 +13,7 @@ type Props = {
   disabled?: boolean
 }
 
-type Item = { key: string; label: string; children?: Item[] }
+type Item = { key: string; label: string; icon?: LucideIcon; children?: Item[]; disabled?: boolean }
 
 export function Menu({ selectedKey, onSelect, collapsed = false, onExpand, disabled = false }: Props) {
   // Collapse state for groups; default: all collapsed on first load
@@ -200,40 +188,28 @@ export function Menu({ selectedKey, onSelect, collapsed = false, onExpand, disab
         <ul style={{ flex: 1, overflow: 'auto', width: '100%', display: 'flex', flexDirection: 'column', gap: 6, opacity: disabled ? .5 : 1, pointerEvents: disabled ? 'none' : 'auto' }}>
           {items.map((it) => (
             <li key={it.key} style={{ display: 'flex', justifyContent: 'center' }}>
+              {/** Disable top-level item when requested */}
               <button
                 data-key={it.key}
                 className={selectedKey === it.key ? 'active' : ''}
                 title={it.label}
                 aria-label={it.label}
+                disabled={disabled || it.disabled}
+                aria-disabled={disabled || it.disabled || undefined}
                 onClick={() => {
+                  if (disabled || it.disabled) return
                   onExpand?.();
-                  // If group, open and navigate to first child
+                  // If group, open and navigate to first non-disabled child
                   if (it.children?.length) {
-                    const first = it.children[0]
+                    const first = it.children.find((c) => !c.disabled)
                     if (first) onSelect(first.key)
                   } else {
                     onSelect(it.key)
                   }
                 }}
-                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', padding: 6 }}
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', padding: 6, opacity: it.disabled ? 0.5 : 1, cursor: it.disabled ? 'not-allowed' : 'pointer' }}
               >
-                <img
-                  src={
-                    it.key === 'lead' ? userIconUrl
-                    : it.key === 'dashboard' ? barChartIconUrl
-                    : it.key === 'demand' ? demandIconUrl
-                    : it.key === 'sales-mgmt' ? moneyIconUrl
-                    : it.key === 'sales-targets' ? targetIconUrl
-                    : it.key === 'customer' ? userIconUrl
-                    : it.key === 'inquiry' ? inquiryIconUrl
-                    : it.key === 'complaint' ? complaintIconUrl
-                    : it.key === 'order-sheet' ? docIconUrl
-                    : it.key === 'estimate' ? moneyIconUrl
-                    : it.key === 'inventory' ? warehouseIconUrl
-                    : (it.children?.length ? folderIconUrl : screenIconUrl)
-                  }
-                className="icon" alt=""
-              />
+                {it.icon && <it.icon size={20} />}
               </button>
             </li>
           ))}
@@ -250,34 +226,23 @@ export function Menu({ selectedKey, onSelect, collapsed = false, onExpand, disab
             <button
               data-key={it.key}
               className={selectedKey === it.key ? 'active' : ''}
+              title={it.label}
+               disabled={disabled || it.disabled}
+               aria-disabled={disabled || it.disabled || undefined}
               onClick={() => {
+                if (disabled || it.disabled) return
                 // For groups, open submenu and navigate to first child
                 if (it.children?.length) {
                   toggle(it.key)
-                  const first = it.children[0]
+                  const first = it.children.find((c) => !c.disabled)
                   if (first) onSelect(first.key)
                 } else {
                   onSelect(it.key)
                 }
               }}
+              style={{ opacity: it.disabled ? 0.5 : 1, cursor: it.disabled ? 'not-allowed' : undefined }}
             >
-              <img
-                src={
-                  it.key === 'lead' ? userIconUrl
-                  : it.key === 'dashboard' ? barChartIconUrl
-                  : it.key === 'demand' ? demandIconUrl
-                  : it.key === 'sales-mgmt' ? moneyIconUrl
-                  : it.key === 'sales-targets' ? targetIconUrl
-                  : it.key === 'customer' ? userIconUrl
-                  : it.key === 'inquiry' ? inquiryIconUrl
-                  : it.key === 'complaint' ? complaintIconUrl
-                  : it.key === 'order-sheet' ? docIconUrl
-                  : it.key === 'estimate' ? moneyIconUrl
-                  : it.key === 'inventory' ? warehouseIconUrl
-                  : (it.children?.length ? folderIconUrl : screenIconUrl)
-                }
-                className="icon" alt=""
-              />
+              {it.icon && <it.icon size={18} className="icon" />}
               <span>{it.label}</span>
             </button>
             {it.children?.length && open[it.key] ? (
@@ -287,14 +252,19 @@ export function Menu({ selectedKey, onSelect, collapsed = false, onExpand, disab
                     <button
                       data-key={sub.key}
                       className={selectedKey === sub.key ? 'active' : ''}
+                      title={sub.label}
+                      disabled={disabled || sub.disabled}
+                      aria-disabled={disabled || sub.disabled || undefined}
                       onClick={() => {
+                        if (disabled || sub.disabled) return
                         onSelect(sub.key)
                         if (sub.key === 'demand:list') {
                           try { window.dispatchEvent(new CustomEvent('tnt.sales.demand.refresh', { detail: { source: 'menu' } })) } catch {}
                         }
                       }}
+                      style={{ opacity: sub.disabled ? 0.5 : 1, cursor: sub.disabled ? 'not-allowed' : undefined }}
                     >
-                      <img src={screenIconUrl} className="icon" alt="" />
+                      <ChevronRight size={16} className="icon" />
                       <span>{sub.label}</span>
                     </button>
                   </li>
@@ -359,7 +329,7 @@ export function Menu({ selectedKey, onSelect, collapsed = false, onExpand, disab
                   className={selectedKey === 'settings' ? 'active' : ''}
                   style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', width: '100%', background: 'transparent', color: 'inherit' }}
                 >
-                  <img src={settingsIconUrl} className="icon" alt="설정" />
+                  <Settings size={16} className="icon" />
                   <span>환경설정</span>
                 </button>
               </div>
@@ -408,7 +378,7 @@ export function Menu({ selectedKey, onSelect, collapsed = false, onExpand, disab
                 title="로그인"
                 aria-disabled={authBusy ? true : undefined}
               >
-                <img src={loginIconUrl} className="icon" alt="" />
+                <LogIn size={18} className="icon" />
               </span>
             </div>
           </div>

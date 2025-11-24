@@ -116,7 +116,7 @@ export function LeadActivitiesList({ leadId }: { leadId?: number | null }) {
   }
 
   const table = useMemo(() => (
-    <div className="table-container" style={{ maxHeight: '50vh', overflow: 'auto' }}>
+    <div className="table-container" style={{ maxHeight: 'calc(100vh - 260px)', overflow: 'auto' }}>
       {items.length === 0 ? (
         <div className="empty-state">{loading ? '불러오는 중…' : (error || '활동이 없습니다.')}</div>
       ) : (

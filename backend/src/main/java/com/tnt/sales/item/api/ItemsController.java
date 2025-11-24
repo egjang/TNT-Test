@@ -91,6 +91,129 @@ import java.util.Map;
         }
     }
 
+    @GetMapping("/unit-usage")
+    public ResponseEntity<?> salesMgmtUnitUsage() {
+        String tbl = env.getProperty("app.item.table", "public.item");
+        String colSalesUnit = env.getProperty("app.item.columns.sales_mgmt_unit", "sales_mgmt_unit");
+        String colSalesUnitSeq = env.getProperty("app.item.columns.sales_mgmt_unit_seq", "sales_mgmt_unit_seq");
+        String colStdUnit = env.getProperty("app.item.columns.item_std_unit", "item_std_unit");
+        String colItemUnit = env.getProperty("app.item.columns.item_unit", "item_unit"); // 판매단위
+        String colActive = env.getProperty("app.item.columns.active", "active");
+
+        boolean hasSalesUnit = columnExists(tbl, colSalesUnit);
+        boolean hasSalesUnitSeq = columnExists(tbl, colSalesUnitSeq);
+        boolean hasStdUnit = columnExists(tbl, colStdUnit);
+        boolean hasItemUnit = columnExists(tbl, colItemUnit);
+        boolean hasActive = columnExists(tbl, colActive);
+
+        String salesUnitExpr = hasSalesUnit ? "coalesce(nullif(trim(" + colSalesUnit + "), ''), '미지정')" : "'미지정'";
+        String salesUnitSeqExpr = hasSalesUnitSeq ? ("coalesce(" + colSalesUnitSeq + ", 0)") : "0";
+        String stdUnitExpr = hasStdUnit ? "coalesce(nullif(trim(" + colStdUnit + "), ''), '미지정')" : "'미지정'";
+        String itemUnitExpr = hasItemUnit ? "coalesce(nullif(trim(" + colItemUnit + "), ''), '미지정')" : "'미지정'";
+
+        String activeFilter = hasActive ? (" WHERE " + colActive + " = '사용'") : "";
+
+        try {
+            String sql = "SELECT " + salesUnitSeqExpr + " AS sales_mgmt_unit_seq, " + salesUnitExpr + " AS sales_mgmt_unit, " + stdUnitExpr + " AS item_std_unit, " + itemUnitExpr + " AS item_unit, COUNT(*) AS item_count " +
+                    "FROM " + tbl + activeFilter + " " +
+                    "GROUP BY 1,2,3,4 " +
+                    "ORDER BY sales_mgmt_unit, item_unit, item_std_unit";
+
+            List<Map<String, Object>> rows = jdbc.query(sql, (rs, i) -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("salesMgmtUnitSeq", rs.getObject(1));
+                m.put("salesMgmtUnit", rs.getString(2));
+                m.put("itemStdUnit", rs.getString(3));
+                m.put("itemUnit", rs.getString(4));
+                m.put("itemCount", rs.getLong(5));
+                return m;
+            });
+            return ResponseEntity.ok(rows);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("error", "unit_usage_query_failed"));
+        }
+    }
+
+    @GetMapping("/unit-usage/items")
+    public ResponseEntity<?> itemsBySalesMgmtUnit(
+            @RequestParam(value = "salesMgmtUnit", required = false) String salesMgmtUnit,
+            @RequestParam(value = "itemUnit", required = false) String itemUnit,
+            @RequestParam(value = "itemStdUnit", required = false) String itemStdUnit) {
+        if (salesMgmtUnit == null || salesMgmtUnit.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "sales_mgmt_unit_required"));
+        }
+        String tbl = env.getProperty("app.item.table", "public.item");
+        String colSalesUnit = env.getProperty("app.item.columns.sales_mgmt_unit", "sales_mgmt_unit");
+        String colSalesUnitSeq = env.getProperty("app.item.columns.sales_mgmt_unit_seq", "sales_mgmt_unit_seq");
+        String colStdUnit = env.getProperty("app.item.columns.item_std_unit", "item_std_unit");
+        String colItemUnit = env.getProperty("app.item.columns.item_unit", "item_unit");
+        String colItemSeq = env.getProperty("app.item.columns.item_seq", "item_seq");
+        String colItemName = env.getProperty("app.item.columns.item_name", "item_name");
+        String colActive = env.getProperty("app.item.columns.active", "active");
+
+        boolean hasSalesUnit = columnExists(tbl, colSalesUnit);
+        boolean hasSalesUnitSeq = columnExists(tbl, colSalesUnitSeq);
+        boolean hasStdUnit = columnExists(tbl, colStdUnit);
+        boolean hasItemUnit = columnExists(tbl, colItemUnit);
+        boolean hasActive = columnExists(tbl, colActive);
+
+        String salesUnitExpr = hasSalesUnit ? colSalesUnit : "NULL::text";
+        String salesUnitSeqExpr = hasSalesUnitSeq ? colSalesUnitSeq : "0";
+        String stdUnitExpr = hasStdUnit ? colStdUnit : "NULL::text";
+        String itemUnitExpr = hasItemUnit ? colItemUnit : "NULL::text";
+
+        // Align filtering with the grouping logic that coalesces null/blank to '미지정'
+        String salesUnitCoalesced = hasSalesUnit
+                ? "coalesce(nullif(trim(" + salesUnitExpr + "), ''), '미지정')"
+                : "'미지정'";
+        String itemUnitCoalesced = hasItemUnit
+                ? "coalesce(nullif(trim(" + itemUnitExpr + "), ''), '미지정')"
+                : "'미지정'";
+        String stdUnitCoalesced = hasStdUnit
+                ? "coalesce(nullif(trim(" + stdUnitExpr + "), ''), '미지정')"
+                : "'미지정'";
+
+        String activeFilter = hasActive ? (" AND " + colActive + " = '사용'") : "";
+
+        // Build WHERE clause dynamically based on provided parameters
+        StringBuilder whereClause = new StringBuilder(" WHERE " + salesUnitCoalesced + " = ?");
+        if (itemUnit != null && !itemUnit.isBlank()) {
+            whereClause.append(" AND ").append(itemUnitCoalesced).append(" = ?");
+        }
+        if (itemStdUnit != null && !itemStdUnit.isBlank()) {
+            whereClause.append(" AND ").append(stdUnitCoalesced).append(" = ?");
+        }
+        whereClause.append(activeFilter);
+
+        String sql = "SELECT " + colItemSeq + " AS item_seq, " + colItemName + " AS item_name, " + stdUnitExpr + " AS item_std_unit, " + itemUnitExpr + " AS item_unit, " + salesUnitSeqExpr + " AS sales_mgmt_unit_seq " +
+                "FROM " + tbl + whereClause.toString() + " ORDER BY " + salesUnitCoalesced + " ASC, " + colItemName + " ASC";
+
+        try {
+            List<Map<String, Object>> rows = jdbc.query(sql, ps -> {
+                int idx = 1;
+                ps.setString(idx++, salesMgmtUnit);
+                if (itemUnit != null && !itemUnit.isBlank()) {
+                    ps.setString(idx++, itemUnit);
+                }
+                if (itemStdUnit != null && !itemStdUnit.isBlank()) {
+                    ps.setString(idx++, itemStdUnit);
+                }
+            }, (rs, i) -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("itemSeq", rs.getObject(1));
+                m.put("itemName", rs.getString(2));
+                m.put("itemStdUnit", rs.getString(3));
+                m.put("itemUnit", rs.getString(4));
+                m.put("salesMgmtUnitSeq", rs.getObject(5));
+                m.put("salesMgmtUnit", salesMgmtUnit);
+                return m;
+            });
+            return ResponseEntity.ok(rows);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("error", "unit_usage_items_query_failed"));
+        }
+    }
+
     @GetMapping("/search")
     public ResponseEntity<?> searchItems(
             @RequestParam("q") String q,
@@ -174,9 +297,14 @@ import java.util.Map;
         sql.append("  GROUP BY i.").append(invColItemSeq).append(", i.").append(invColItemName).append("\n");
         sql.append("), itm AS (\n");
         // items master source
+        String itemColActive = env.getProperty("app.item.columns.active", "active");
+        boolean hasActive = columnExists(itemTbl, itemColActive);
         sql.append("  SELECT DISTINCT it.").append(itemColSeq).append(" AS item_seq, it.").append(itemColName).append(" AS item_name, ").append(itemCompanyExpr).append(" AS company_type, ").append(itemStdUnitExpr).append(" AS item_std_unit\n")
            .append("  FROM ").append(itemTbl).append(" it\n")
            .append("  WHERE 1=1\n");
+        if (hasActive) {
+            sql.append("    AND it.").append(itemColActive).append(" = '사용'\n");
+        }
         for (int ti = 0; ti < tokens.length; ti++) {
             sql.append("    AND it.").append(itemColName).append(" ILIKE ?\n");
         }
@@ -247,10 +375,13 @@ import java.util.Map;
         String colSpec = env.getProperty("app.item.columns.item_spec", "item_spec");
         String colStdUnit = env.getProperty("app.item.columns.item_std_unit", "item_std_unit");
         String colCompanyType = env.getProperty("app.item.columns.company_type", "company_type");
+        String colActive = env.getProperty("app.item.columns.active", "active");
         boolean hasStd = columnExists(tbl, colStdUnit);
         boolean hasCompanyType = columnExists(tbl, colCompanyType);
+        boolean hasActive = columnExists(tbl, colActive);
         String stdExpr = hasStd ? colStdUnit : "NULL::text";
         String companyTypeExpr = hasCompanyType ? colCompanyType : "NULL::text";
+        String activeFilter = hasActive ? (" AND " + colActive + " = '사용'") : "";
 
         try {
             String sql;
@@ -258,7 +389,7 @@ import java.util.Map;
 
             // Prefer itemName if provided, fallback to itemSeq
             if (itemName != null && !itemName.trim().isEmpty()) {
-                sql = "SELECT "+colSeq+", "+colName+", "+colSpec+", "+stdExpr+", "+companyTypeExpr+" FROM "+tbl+" WHERE "+colName+"=?";
+                sql = "SELECT "+colSeq+", "+colName+", "+colSpec+", "+stdExpr+", "+companyTypeExpr+" FROM "+tbl+" WHERE "+colName+"=?"+activeFilter;
                 rows = jdbc.query(sql, ps -> ps.setString(1, itemName), (rs, i) -> {
                     Map<String,Object> m = new LinkedHashMap<>();
                     m.put("itemSeq", rs.getObject(1));
@@ -269,7 +400,7 @@ import java.util.Map;
                     return m;
                 });
             } else if (itemSeq != null && itemSeq > 0) {
-                sql = "SELECT "+colSeq+", "+colName+", "+colSpec+", "+stdExpr+", "+companyTypeExpr+" FROM "+tbl+" WHERE "+colSeq+"=?";
+                sql = "SELECT "+colSeq+", "+colName+", "+colSpec+", "+stdExpr+", "+companyTypeExpr+" FROM "+tbl+" WHERE "+colSeq+"=?"+activeFilter;
                 rows = jdbc.query(sql, ps -> ps.setLong(1, itemSeq), (rs, i) -> {
                     Map<String,Object> m = new LinkedHashMap<>();
                     m.put("itemSeq", rs.getObject(1));
@@ -352,7 +483,7 @@ import java.util.Map;
             org.springframework.http.ResponseEntity<java.util.Map> resp = rt.postForEntity(apiUrl, entity, java.util.Map.class);
 
             java.util.Map<String,Object> out = new java.util.LinkedHashMap<>();
-            out.put("status", resp.getStatusCodeValue());
+            out.put("status", resp.getStatusCode().value());
             out.put("url", apiUrl);
             out.put("sendPayload", payload);
             if (resp.getBody() != null) out.put("receivedPayload", resp.getBody());

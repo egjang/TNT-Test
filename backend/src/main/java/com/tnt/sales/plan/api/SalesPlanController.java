@@ -128,7 +128,11 @@ public class SalesPlanController {
                 java.util.List<Object> params = new java.util.ArrayList<>();
                 for (String id : empIds) params.add(id);
                 try {
-                    jdbc.query(sb.toString(), params.toArray(), (rs, idx) -> {
+                    jdbc.query(sb.toString(), ps -> {
+                        for (int idx = 0; idx < params.size(); idx++) {
+                            ps.setObject(idx + 1, params.get(idx));
+                        }
+                    }, (rs, idx) -> {
                         String emp = rs.getString(1);
                         String asg = rs.getString(2);
                         if (emp != null && !emp.isBlank()) empToAssignee.put(emp.trim(), (asg == null ? "" : asg.trim()));
@@ -177,7 +181,11 @@ public class SalesPlanController {
             for (String a : assigneeIds) ps.add(a);
             if (!companyTypes.isEmpty()) for (String c : companyTypes) ps.add(c);
 
-            java.util.List<java.util.Map<String,Object>> rows = jdbc.query(base.toString(), ps.toArray(), (rs, idx) -> {
+            java.util.List<java.util.Map<String,Object>> rows = jdbc.query(base.toString(), pss -> {
+                for (int idx = 0; idx < ps.size(); idx++) {
+                    pss.setObject(idx + 1, ps.get(idx));
+                }
+            }, (rs, idx) -> {
                 java.util.Map<String,Object> m = new java.util.LinkedHashMap<>();
                 m.put("assignee_id", rs.getString(1));
                 m.put("emp_id", rs.getString(2));
@@ -1285,7 +1293,7 @@ public class SalesPlanController {
             String sqlAvg = "SELECT CASE WHEN SUM(COALESCE(i."+colQty2+",0)) > 0 THEN (SUM(COALESCE(i."+colAmt2+",0)) / SUM(COALESCE(i."+colQty2+",0))) ELSE 0 END AS avg_unit_price " +
                     "FROM "+invTbl2+" i JOIN public.customer c ON CAST(i."+colCust2+" AS TEXT) = CAST(c.customer_seq AS TEXT) " +
                     "WHERE c.assignee_id=? AND UPPER(c.company_type)=UPPER(?) AND EXTRACT(YEAR FROM "+dateExpr2+")=? AND coalesce(nullif(trim(i."+colUnit2+"), ''), 'na') = ?";
-            Double upObj; try { upObj = jdbc.queryForObject(sqlAvg, new Object[]{ assigneeId, companyType, prev, unit }, Double.class); } catch (Exception ex) { upObj = 0d; }
+            Double upObj; try { upObj = jdbc.queryForObject(sqlAvg, Double.class, assigneeId, companyType, prev, unit); } catch (Exception ex) { upObj = 0d; }
             double unitPrice = upObj == null ? 0d : upObj.doubleValue();
             // Fallback: if no employee-specific average, use company-wide average for the unit
             if (unitPrice <= 0d) {
@@ -1293,7 +1301,7 @@ public class SalesPlanController {
                         "FROM "+invTbl2+" i JOIN public.customer c ON CAST(i."+colCust2+" AS TEXT) = CAST(c.customer_seq AS TEXT) " +
                         "WHERE UPPER(c.company_type)=UPPER(?) AND EXTRACT(YEAR FROM "+dateExpr2+")=? AND coalesce(nullif(trim(i."+colUnit2+"), ''), 'na') = ?";
                 try {
-                    Double upG = jdbc.queryForObject(sqlAvgGlobal, new Object[]{ companyType, prev, unit }, Double.class);
+                    Double upG = jdbc.queryForObject(sqlAvgGlobal, Double.class, companyType, prev, unit);
                     if (upG != null && upG.doubleValue() > 0d) unitPrice = upG.doubleValue();
                 } catch (Exception ignore) {}
             }
@@ -1320,7 +1328,10 @@ public class SalesPlanController {
             try {
                 Integer cnt = jdbc.queryForObject(
                         "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=? AND table_name=? AND column_name=?",
-                        new Object[]{ "public", (tblPlan.contains(".") ? tblPlan.substring(tblPlan.indexOf('.')+1) : tblPlan), "customer_name" }, Integer.class);
+                        Integer.class,
+                        "public",
+                        (tblPlan.contains(".") ? tblPlan.substring(tblPlan.indexOf('.')+1) : tblPlan),
+                        "customer_name");
                 hasCustNameCol = (cnt != null && cnt > 0);
             } catch (Exception ignore) {}
             String custName = null;

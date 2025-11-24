@@ -5,7 +5,7 @@ export function OrderList() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Single fetch (infinite scroll removed)
-  const [company, setCompany] = useState<'TNT'|'DYS'>('TNT')
+  const [company, setCompany] = useState<'TNT'|'DYS'|'ALL'>('ALL')
   const [scope, setScope] = useState<'mine'|'all'>('mine')
   function todayYyMmDd(): string {
     const d = new Date()
@@ -25,7 +25,8 @@ export function OrderList() {
   const [custQuery, setCustQuery] = useState('')
   // employee 사번 해석은 조회 버튼 클릭 시점에만 수행
 
-  async function resolveMyEmpSeqForCompany(co: 'TNT'|'DYS'): Promise<string> {
+  async function resolveMyEmpSeqForCompany(co: 'TNT'|'DYS'|'ALL'): Promise<string> {
+    if (co === 'ALL') return ''
     try {
       const aid = (typeof window !== 'undefined') ? (localStorage.getItem('tnt.sales.assigneeId') || '') : ''
       const eid = (typeof window !== 'undefined') ? (localStorage.getItem('tnt.sales.empId') || '') : ''
@@ -223,58 +224,103 @@ export function OrderList() {
     <section>
       <div className="page-title" style={{ alignItems: 'center' }}>
         <h2 style={{ margin: 0, fontSize: 18 }}>수주장 조회</h2>
-        <div style={{ marginLeft: 'auto', display: 'flex', flexDirection:'column', alignItems: 'flex-end', gap: 8 }}>
-          <div style={{ display:'inline-flex', alignItems:'center', gap: 12, fontSize: 12 }}>
-            <label style={{ display:'inline-flex', alignItems:'center', gap: 4 }}>
-              <input type="radio" name="company" checked={company==='TNT'} onChange={()=> setCompany('TNT')} /> TNT
-            </label>
-            <label style={{ display:'inline-flex', alignItems:'center', gap: 4 }}>
-              <input type="radio" name="company" checked={company==='DYS'} onChange={()=> setCompany('DYS')} /> DYS
-            </label>
-            <select
-              className="search-input"
-              value={scope}
-              onChange={(e) => setScope((e.target.value as any) || 'all')}
-              title="조회 범위"
-              style={{ minWidth: 110 }}
-            >
-              <option value="mine">내수주</option>
-              <option value="all">전체</option>
-            </select>
-            <div style={{ width: 8 }} />
-            <label className="muted">수주일</label>
-            <input
-              className="search-input"
-              placeholder="YY-MM-DD"
-              value={fromDate}
-              onChange={(e)=> { setFromDate(e.target.value); if (fromErr) setFromErr(null) }}
-              onBlur={(e) => { const n = normalizeYyMmDd(e.target.value); if (n===null && e.target.value.trim()) setFromErr('형식: YY-MM-DD'); else if (typeof n==='string') setFromDate(n) }}
-              style={{ width: 90 }}
-            />
-            {fromErr ? (<div className="error" style={{ fontSize: 11 }}>{fromErr}</div>) : null}
-            <span className="muted">~</span>
-            <input
-              className="search-input"
-              placeholder="YY-MM-DD"
-              value={toDate}
-              onChange={(e)=> { setToDate(e.target.value); if (toErr) setToErr(null) }}
-              onBlur={(e) => { const n = normalizeYyMmDd(e.target.value); if (n===null && e.target.value.trim()) setToErr('형식: YY-MM-DD'); else if (typeof n==='string') setToDate(n) }}
-              style={{ width: 90 }}
-            />
-              {toErr ? (<div className="error" style={{ fontSize: 11 }}>{toErr}</div>) : null}
-              <button className="btn btn-card btn-3d" onClick={() => runQuery(true)} disabled={!!fromErr || !!toErr || loading}>조회</button>
-              
-          </div>
-          <div style={{ display:'inline-flex', alignItems:'center', gap: 6, alignSelf:'stretch', fontSize: 12 }}>
-            <label className="muted">거래처명</label>
-            <input
-              className="search-input"
-              placeholder="검색어(공백으로 AND)"
-              value={custQuery}
-              onChange={(e)=> setCustQuery(e.target.value)}
-              style={{ width: 320 }}
-            />
-          </div>
+
+        {/* Company Selection - Left Side */}
+        <div style={{ marginLeft: 16, background: '#f3f4f6', padding: 4, borderRadius: 8, display: 'flex', gap: 0 }}>
+          <button
+            onClick={() => setCompany('ALL')}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: 'none',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              background: company === 'ALL' ? '#fff' : 'transparent',
+              color: company === 'ALL' ? '#2563eb' : '#6b7280',
+              boxShadow: company === 'ALL' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+              transition: 'all 0.2s'
+            }}
+          >
+            ALL
+          </button>
+          <button
+            onClick={() => setCompany('TNT')}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: 'none',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              background: company === 'TNT' ? '#fff' : 'transparent',
+              color: company === 'TNT' ? '#2563eb' : '#6b7280',
+              boxShadow: company === 'TNT' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+              transition: 'all 0.2s'
+            }}
+          >
+            TNT
+          </button>
+          <button
+            onClick={() => setCompany('DYS')}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: 'none',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              background: company === 'DYS' ? '#fff' : 'transparent',
+              color: company === 'DYS' ? '#2563eb' : '#6b7280',
+              boxShadow: company === 'DYS' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+              transition: 'all 0.2s'
+            }}
+          >
+            DYS
+          </button>
+        </div>
+
+        {/* Filters - Right Side */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, fontSize: 12 }}>
+          <select
+            className="search-input"
+            value={scope}
+            onChange={(e) => setScope((e.target.value as any) || 'all')}
+            title="조회 범위"
+            style={{ minWidth: 110 }}
+          >
+            <option value="mine">내수주</option>
+            <option value="all">전체</option>
+          </select>
+          <label className="muted">수주일</label>
+          <input
+            className="search-input"
+            placeholder="YY-MM-DD"
+            value={fromDate}
+            onChange={(e)=> { setFromDate(e.target.value); if (fromErr) setFromErr(null) }}
+            onBlur={(e) => { const n = normalizeYyMmDd(e.target.value); if (n===null && e.target.value.trim()) setFromErr('형식: YY-MM-DD'); else if (typeof n==='string') setFromDate(n) }}
+            style={{ width: 90 }}
+          />
+          {fromErr ? (<div className="error" style={{ fontSize: 11 }}>{fromErr}</div>) : null}
+          <span className="muted">~</span>
+          <input
+            className="search-input"
+            placeholder="YY-MM-DD"
+            value={toDate}
+            onChange={(e)=> { setToDate(e.target.value); if (toErr) setToErr(null) }}
+            onBlur={(e) => { const n = normalizeYyMmDd(e.target.value); if (n===null && e.target.value.trim()) setToErr('형식: YY-MM-DD'); else if (typeof n==='string') setToDate(n) }}
+            style={{ width: 90 }}
+          />
+          {toErr ? (<div className="error" style={{ fontSize: 11 }}>{toErr}</div>) : null}
+          <label className="muted">거래처명</label>
+          <input
+            className="search-input"
+            placeholder="검색어(공백으로 AND)"
+            value={custQuery}
+            onChange={(e)=> setCustQuery(e.target.value)}
+            style={{ width: 200 }}
+          />
+          <button className="btn btn-card btn-3d" onClick={() => runQuery(true)} disabled={!!fromErr || !!toErr || loading}>조회</button>
         </div>
       </div>
       {error ? (<div className="error">{error}</div>) : null}
@@ -291,32 +337,76 @@ export function OrderList() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => (
-                <tr
-                  key={i}
-                  onMouseEnter={(e) => {
-                    const x = (e.clientX || 0) + 12
-                    const y = (e.clientY || 0) + 12
-                    if (!ctx?.open) setHover({ open: true, x, y, rec: r })
-                  }}
-                  onMouseMove={(e) => {
-                    if (!hover?.open) return
-                    const x = (e.clientX || 0) + 12
-                    const y = (e.clientY || 0) + 12
-                    if (!ctx?.open) setHover({ open: true, x, y, rec: r })
-                  }}
-                  onMouseLeave={() => setHover(null)}
-                  onContextMenu={(e) => {
-                    e.preventDefault()
-                    const x = e.clientX, y = e.clientY
-                    setCtx({ open: true, x, y, rec: r })
-                  }}
-                >
-                  {cols.map((c) => (
-                    <td key={c}>{String(r?.[c] ?? '')}</td>
-                  ))}
-                </tr>
-              ))}
+              {rows.map((r, i) => {
+                // Determine company type from CompanyType field
+                const companyTypeField = Object.keys(r).find(k => k.toLowerCase() === 'companytype')
+                const companyTypeValue = companyTypeField ? String(r[companyTypeField] || '').trim().toUpperCase() : ''
+
+                return (
+                  <tr
+                    key={i}
+                    onMouseEnter={(e) => {
+                      const x = (e.clientX || 0) + 12
+                      const y = (e.clientY || 0) + 12
+                      if (!ctx?.open) setHover({ open: true, x, y, rec: r })
+                    }}
+                    onMouseMove={(e) => {
+                      if (!hover?.open) return
+                      const x = (e.clientX || 0) + 12
+                      const y = (e.clientY || 0) + 12
+                      if (!ctx?.open) setHover({ open: true, x, y, rec: r })
+                    }}
+                    onMouseLeave={() => setHover(null)}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      const x = e.clientX, y = e.clientY
+                      setCtx({ open: true, x, y, rec: r })
+                    }}
+                  >
+                    {cols.map((c) => {
+                      const isCustCol = /^(CustSeq|CustName|CustomerName|customer_name)$/i.test(c) || headerLabel(c) === '거래처명'
+                      const cellValue = String(r?.[c] ?? '')
+
+                      if (isCustCol && company === 'ALL' && companyTypeValue) {
+                        const isTNT = companyTypeValue.includes('TNT')
+                        const isDYS = companyTypeValue.includes('DYS')
+                        const icon = isTNT ? 'T' : isDYS ? 'D' : ''
+                        const iconBg = isTNT ? '#1d4ed8' : isDYS ? '#059669' : '#6b7280'
+
+                        return (
+                          <td key={c}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              {icon && (
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: 20,
+                                    height: 20,
+                                    borderRadius: '50%',
+                                    background: iconBg,
+                                    color: '#fff',
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    flexShrink: 0
+                                  }}
+                                  title={companyTypeValue}
+                                >
+                                  {icon}
+                                </span>
+                              )}
+                              <span>{cellValue}</span>
+                            </div>
+                          </td>
+                        )
+                      }
+
+                      return <td key={c}>{cellValue}</td>
+                    })}
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}

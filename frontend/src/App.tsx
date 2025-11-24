@@ -3,9 +3,7 @@ import { ResizableColumns } from './components/ResizableColumns'
 import { Menu } from './features/menu/Menu'
 import { ThemeToggle } from './ui/ThemeToggle'
 import { useIsMobile } from './ui/useIsMobile'
-import chevronLeft from './assets/icons/chevron-left.svg'
-import chevronRight from './assets/icons/chevron-right.svg'
-import hanokIcon from './assets/icons/hanok-window.svg'
+import { ChevronLeft, ChevronRight, Building2 } from 'lucide-react'
 import homeImgUrl from './home.jpg'
 
 const MainView = lazy(() => import('./features/main/MainView').then((m) => ({ default: m.MainView })))
@@ -48,6 +46,9 @@ const SalesMgmtActivitiesRightPanel = lazy(() =>
 const TMMonthlyMatrixPanel = lazy(() =>
   import('./features/lead/TMMonthlyMatrix').then((m) => ({ default: m.TMMonthlyMatrix }))
 )
+const PromotionPanel = lazy(() =>
+  import('./features/inventory/PromotionPanel').then((m) => ({ default: m.PromotionPanel }))
+)
 
 export default function App() {
   // selection key format example: 'calendar', 'demand', 'demand:excel-upload'
@@ -58,6 +59,7 @@ export default function App() {
   })
   const isMobile = useIsMobile(768)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [expirySelectionCount, setExpirySelectionCount] = useState(0)
   const leftW = menuCollapsed ? 40 : 220
   const rightW = Math.round(leftW * 2.5)
   const mergeRight = selectedKey === 'sales-plan-new' || selectedKey === 'sales-plan-s' || selectedKey === 'sales-targets'
@@ -84,6 +86,28 @@ export default function App() {
     return () => window.removeEventListener('tnt.sales.login.changed' as any, onLogin)
   }, [])
 
+  // Listen for expiry inventory selection count updates
+  useEffect(() => {
+    const handler = (event: CustomEvent<{ count?: number }>) => {
+      const count = Number(event.detail?.count ?? 0)
+      setExpirySelectionCount(Number.isFinite(count) ? count : 0)
+    }
+    window.addEventListener('tnt.inventory.expiry.selection', handler as EventListener)
+    return () => window.removeEventListener('tnt.inventory.expiry.selection', handler as EventListener)
+  }, [])
+
+  const handleApplyPromotion = (promotionId: number) => {
+    try {
+      window.dispatchEvent(
+        new CustomEvent('tnt.inventory.apply-promotion', {
+          detail: { promotionId },
+        })
+      )
+    } catch (err) {
+      console.error('프로모션 적용 이벤트 전파 실패:', err)
+    }
+  }
+
   if (isMobile) {
     return (
       <div className="app-root">
@@ -99,9 +123,9 @@ export default function App() {
             aria-label="메뉴 열기"
             style={{ marginRight: 8 }}
           >
-            <img src={chevronRight} className="icon" alt="메뉴" />
+            <ChevronRight className="icon" size={20} />
           </span>
-          <img src={hanokIcon} className="icon icon-lg" alt="" />
+          <Building2 className="icon icon-lg" size={24} />
           <div style={{ marginLeft: 'auto' }}>
             <ThemeToggle />
           </div>
@@ -119,7 +143,7 @@ export default function App() {
             <div className="mobile-drawer-panel">
               <div className="pane-header" style={{ justifyContent: 'space-between' }}>
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                  <img src={hanokIcon} className="icon icon-lg" alt="" />
+                  <Building2 className="icon icon-lg" size={24} />
                   <strong>메뉴</strong>
                 </div>
                 <span
@@ -131,7 +155,7 @@ export default function App() {
                   title="닫기"
                   aria-label="닫기"
                 >
-                  <img src={chevronLeft} className="icon" alt="닫기" />
+                  <ChevronLeft className="icon" size={20} />
                 </span>
               </div>
               <div style={{ padding: 8 }}>
@@ -152,7 +176,7 @@ export default function App() {
       <ResizableColumns fixedLeft={leftW} initialLeft={leftW} initialRight={rightW} minLeft={leftW} minRight={220} fixedRight={mergeRight ? 0 : undefined}>
         <div className="pane left">
           <div className="pane-header" style={{ padding: menuCollapsed ? '0 4px' as any : undefined }}>
-            {!menuCollapsed && <img src={hanokIcon} className="icon icon-lg" alt="" />}
+            {!menuCollapsed && <Building2 className="icon icon-lg" size={24} />}
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
               <span
                 role="button"
@@ -164,7 +188,7 @@ export default function App() {
                 aria-label={menuCollapsed ? '메뉴 펼치기' : '메뉴 숨기기'}
                 style={menuCollapsed ? { width: 28, height: 28 } : undefined}
               >
-                <img src={menuCollapsed ? chevronRight : chevronLeft} className="icon" alt="" />
+                {menuCollapsed ? <ChevronRight className="icon" size={20} /> : <ChevronLeft className="icon" size={20} />}
               </span>
               {!menuCollapsed && <ThemeToggle />}
             </div>
@@ -257,6 +281,10 @@ export default function App() {
                 </div>
               ) : selectedKey === 'sales-mgmt:activities' ? (
                 <SalesMgmtActivitiesRightPanel />
+              ) : selectedKey === 'inventory:expiry-ag' ? (
+                <div className="fill">
+                  <PromotionPanel selectedItemsCount={expirySelectionCount} onApplyPromotion={handleApplyPromotion} />
+                </div>
               ) : (
                 <div className="placeholder">향후 기능을 위해 예약된 영역</div>
               )}

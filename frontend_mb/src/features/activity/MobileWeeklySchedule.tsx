@@ -7,6 +7,7 @@ type Activity = {
   plannedStartAt?: string
   activityStatus?: string
   activityType?: string
+  source?: 'sales' | 'region'
 }
 
 type WeekRange = {
@@ -77,35 +78,58 @@ export function MobileWeeklySchedule({ onBack }: { onBack: () => void }) {
       const assigneeId = localStorage.getItem('tnt.sales.assigneeId') || ''
       const empId = localStorage.getItem('tnt.sales.empId') || ''
 
-      const params = new URLSearchParams()
-      params.set('mineOnly', 'true')
-      if (assigneeId) params.set('assigneeId', assigneeId)
-      else if (empId) params.set('empId', empId)
-      params.set('start', weekRange.start.toISOString())
-      params.set('end', weekRange.end.toISOString())
-      params.set('onlyRoot', 'true')
+      // Load sales activities
+      const salesParams = new URLSearchParams()
+      salesParams.set('mineOnly', 'true')
+      if (assigneeId) salesParams.set('assigneeId', assigneeId)
+      else if (empId) salesParams.set('empId', empId)
+      salesParams.set('start', weekRange.start.toISOString())
+      salesParams.set('end', weekRange.end.toISOString())
+      salesParams.set('onlyRoot', 'true')
 
-      const res = await fetch(`/api/v1/sales-activities?${params.toString()}`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-
-      const data = await res.json()
-      const list: Activity[] = (Array.isArray(data) ? data : []).map((r: any) => ({
+      const salesRes = await fetch(`/api/v1/sales-activities?${salesParams.toString()}`)
+      const salesData = salesRes.ok ? await salesRes.json() : []
+      const salesList: Activity[] = (Array.isArray(salesData) ? salesData : []).map((r: any) => ({
         id: Number(r.id),
         subject: r.subject,
         customerName: r.customerName,
         plannedStartAt: r.plannedStartAt,
         activityStatus: r.activityStatus,
         activityType: r.activityType,
+        source: 'sales' as const,
       }))
 
-      // Sort by plannedStartAt
-      list.sort((a, b) => {
+      // Load region activity plans
+      const regionParams = new URLSearchParams()
+      if (assigneeId) regionParams.set('assigneeId', assigneeId)
+      regionParams.set('start', weekRange.start.toISOString())
+      regionParams.set('end', weekRange.end.toISOString())
+
+      const regionRes = await fetch(`/api/v1/region-activity-plans?${regionParams.toString()}`)
+      const regionData = regionRes.ok ? await regionRes.json() : []
+      const regionList: Activity[] = (Array.isArray(regionData) ? regionData : []).map((r: any) => {
+        const plannedStartAt = r?.plannedStartAt ?? r?.planned_start_at ?? null
+        const hasActual = !!(r?.actualStartAt || r?.actual_start_at || r?.actualEndAt || r?.actual_end_at)
+        const subject = r?.subject ? `[지역] ${r.subject}` : '지역활동'
+        return {
+          id: Number(r?.id),
+          subject,
+          plannedStartAt: plannedStartAt || undefined,
+          activityStatus: hasActual ? '완료' : '계획',
+          activityType: '지역활동',
+          source: 'region' as const,
+        }
+      })
+
+      // Combine and sort
+      const combined = [...salesList, ...regionList]
+      combined.sort((a, b) => {
         const dateA = a.plannedStartAt ? new Date(a.plannedStartAt).getTime() : 0
         const dateB = b.plannedStartAt ? new Date(b.plannedStartAt).getTime() : 0
         return dateA - dateB
       })
 
-      setActivities(list)
+      setActivities(combined)
     } catch (e: any) {
       setError(e?.message || '활동 목록을 불러오지 못했습니다')
       setActivities([])

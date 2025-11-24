@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import closeIcon from '../../assets/icons/close.svg'
-import docIcon from '../../assets/icons/doc.svg'
-import warehouseIcon from '../../assets/icons/warehouse.svg'
+import { X, FileText, Warehouse } from 'lucide-react'
 
 type Props = {
   data?: {
@@ -121,7 +119,7 @@ export function OrderSheetRightPanel({ data }: Props) {
     <div className="card order-form" style={{ padding: 12, height: '100%', overflow: 'auto', background: 'var(--sheet-bg)', marginTop: 3 }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-        <img src={docIcon} className="icon" alt="수주장" />
+        <FileText className="icon" size={20} />
         <strong>수주장</strong>
       </div>
 
@@ -242,14 +240,11 @@ export function OrderSheetRightPanel({ data }: Props) {
                         {(() => {
                           const info = availMap[String(it.itemSeq)]
                           const noStock = !!info && Array.isArray(info.rows) && info.rows.length === 0
-                          const redFilter = 'invert(23%) sepia(92%) saturate(6579%) hue-rotate(357deg) brightness(91%) contrast(118%)'
                           return (
-                            <img
-                              src={warehouseIcon}
+                            <Warehouse
                               className="icon"
-                              alt={noStock ? '재고 없음' : '재고'}
-                              title={noStock ? '재고 없음' : '재고 조회'}
-                              style={noStock ? ({ filter: redFilter } as React.CSSProperties) : undefined}
+                              size={18}
+                              color={noStock ? 'red' : undefined}
                             />
                           )
                         })()}
@@ -270,7 +265,7 @@ export function OrderSheetRightPanel({ data }: Props) {
                         }}
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const next = cart.filter((_, i) => i !== idx); setCart(next); try { localStorage.setItem('tnt.sales.ordersheet.cart', JSON.stringify(next)); window.dispatchEvent(new CustomEvent('tnt.sales.ordersheet.cart.changed', { detail: { cart: next } }) as any) } catch {} } }}
                       >
-                        <img src={closeIcon} className="icon" alt="취소" />
+                        <X className="icon" size={18} />
                       </span>
                     </div>
                     {(() => {

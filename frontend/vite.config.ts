@@ -7,7 +7,7 @@ export default defineConfig(({ mode }) => {
   const target = env.VITE_API_BASE_URL || env.VITE_BACKEND_URL || 'http://localhost:8080'
   return {
     plugins: [react()],
-    // Serve app under /sales/ when building for production so assets resolve correctly
+    // Serve app under /sales/ in production so asset URLs resolve
     base: mode === 'production' ? '/sales/' : '/',
     server: {
       port: 5173,

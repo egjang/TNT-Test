@@ -198,7 +198,7 @@ public class RegionActivityPlanController {
                     "    FROM params\n" +
                     "), tw AS (\n" +
                     "  SELECT rap.assignee_id AS owner,\n" +
-                    "         SUM(CASE WHEN rap.actual_start_at IS NULL THEN 1 ELSE 0 END) AS plan,\n" +
+                    "         COUNT(*) AS plan,\n" +
                     "         SUM(CASE WHEN rap.actual_start_at IS NOT NULL THEN 1 ELSE 0 END) AS actual\n" +
                     "    FROM public.region_activity_plan rap, bounds b\n" +
                     "   WHERE rap.planned_start_at >= b.this_start\n" +
@@ -206,7 +206,7 @@ public class RegionActivityPlanController {
                     "   GROUP BY rap.assignee_id\n" +
                     "), nw AS (\n" +
                     "  SELECT rap.assignee_id AS owner,\n" +
-                    "         SUM(CASE WHEN rap.actual_start_at IS NULL THEN 1 ELSE 0 END) AS plan,\n" +
+                    "         COUNT(*) AS plan,\n" +
                     "         SUM(CASE WHEN rap.actual_start_at IS NOT NULL THEN 1 ELSE 0 END) AS actual\n" +
                     "    FROM public.region_activity_plan rap, bounds b\n" +
                     "   WHERE rap.planned_start_at >= b.next_start\n" +
@@ -231,7 +231,11 @@ public class RegionActivityPlanController {
             args.add(offsetWeeks == null ? 0 : offsetWeeks.intValue());
             if (in != null) args.addAll(target);
 
-            List<Map<String, Object>> rows = jdbc.query(sql, args.toArray(), (rs, i) -> {
+            List<Map<String, Object>> rows = jdbc.query(sql, ps -> {
+                for (int idx = 0; idx < args.size(); idx++) {
+                    ps.setObject(idx + 1, args.get(idx));
+                }
+            }, (rs, i) -> {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("emp_id", rs.getString(1));
                 m.put("assignee_id", rs.getString(2));
@@ -266,7 +270,6 @@ public class RegionActivityPlanController {
             Map<String, Object> row = jdbc.queryForObject(
                     "SELECT id, subject, description, addr_province_name, addr_district_name, addr_district_code, planned_start_at, planned_end_at, actual_start_at, actual_end_at " +
                             "FROM public.region_activity_plan WHERE id=?",
-                    new Object[]{id},
                     (rs, i) -> {
                         Map<String, Object> data = new LinkedHashMap<>();
                         data.put("id", rs.getLong("id"));
@@ -280,7 +283,8 @@ public class RegionActivityPlanController {
                         data.put("actual_start_at", toIsoString(rs.getTimestamp("actual_start_at")));
                         data.put("actual_end_at", toIsoString(rs.getTimestamp("actual_end_at")));
                         return data;
-                    }
+                    },
+                    id
             );
             if (row != null) {
                 row.put("targets", loadTargets(id));
@@ -428,8 +432,9 @@ public class RegionActivityPlanController {
         try {
             return jdbc.queryForObject(
                     "SELECT addr_district_code FROM public.address_area WHERE addr_province_name ILIKE ? AND addr_district_name ILIKE ? ORDER BY addr_district_code LIMIT 1",
-                    new Object[]{province.trim(), district.trim()},
-                    String.class
+                    String.class,
+                    province.trim(),
+                    district.trim()
             );
         } catch (EmptyResultDataAccessException ignore) {
             return null;

@@ -6,6 +6,7 @@ import { CustomerDemandPivot } from './CustomerDemandPivot'
 import { CustomerDemandCharts } from './CustomerDemandCharts'
 import { CustomerDemandEntry } from './CustomerDemandEntry'
 import { CustomerSpecialNotes } from './CustomerSpecialNotes'
+import { SalesActivityForm, type SalesActivityInitial } from './SalesActivityForm'
 
 type CustomerCtx = {
   customerId?: string
@@ -32,6 +33,7 @@ export function Customer360() {
   })
   const [activeTab, setActiveTab] = useState<'transactions' | 'activities' | 'demand' | 'complaint' | 'special-notes'>('transactions')
   const [demandRefresh, setDemandRefresh] = useState(0)
+  const [inlineCreate, setInlineCreate] = useState<SalesActivityInitial | null>(null)
 
   useEffect(() => {
     try {
@@ -53,6 +55,30 @@ export function Customer360() {
     window.addEventListener('tnt.sales.customer.selected', onSelected as any)
     return () => window.removeEventListener('tnt.sales.customer.selected', onSelected as any)
   }, [])
+
+  useEffect(() => {
+    const onCreate = (e: any) => {
+      const cust = e?.detail?.customer || ctx
+      const cid = cust?.customerId ?? cust?.customer_id
+      const cname = cust?.customerName ?? cust?.customer_name
+      setInlineCreate({ sfAccountId: cid ? String(cid) : undefined, customerName: cname })
+    }
+    window.addEventListener('tnt.sales.activity.create.inline' as any, onCreate as any)
+    return () => window.removeEventListener('tnt.sales.activity.create.inline' as any, onCreate as any)
+  }, [ctx])
+
+  useEffect(() => {
+    if (!inlineCreate) return
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        setInlineCreate(null)
+      }
+    }
+    window.addEventListener('keydown', onEsc, true)
+    return () => window.removeEventListener('keydown', onEsc, true)
+  }, [inlineCreate])
 
   const customerForm = useMemo(() => {
     // 요청: 상단의 거래처 목록 높이를 내활동 목록 높이(약 32vh)로 제한
@@ -138,6 +164,60 @@ export function Customer360() {
           </div>
         </div>
       </section>
+
+      {inlineCreate && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)', zIndex: 120, display:'flex', alignItems:'center', justifyContent:'center' }}
+          onClick={() => setInlineCreate(null)}
+        >
+          <div
+            className="card"
+            style={{ width:'min(920px, 92vw)', maxHeight:'90vh', overflow:'auto', padding:16, background:'var(--panel)', border:'1px solid var(--border)', borderRadius:12, boxShadow:'0 8px 32px rgba(0,0,0,.2)' }}
+            onClick={(e)=> e.stopPropagation()}
+          >
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: 12 }}>
+              <h3 style={{ margin:0, fontSize:16, fontWeight:700 }}>영업활동 등록</h3>
+              <button
+                onClick={() => setInlineCreate(null)}
+                style={{
+                  width: 32,
+                  height: 32,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  color: 'var(--muted)',
+                  fontSize: 20,
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--panel-2)'
+                  e.currentTarget.style.color = 'var(--text)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent'
+                  e.currentTarget.style.color = 'var(--muted)'
+                }}
+                title="닫기 (ESC)"
+                aria-label="닫기"
+              >
+                ×
+              </button>
+            </div>
+            <SalesActivityForm
+              bare
+              initial={inlineCreate}
+              onSaved={() => { setInlineCreate(null); try { window.dispatchEvent(new CustomEvent('tnt.sales.activity.updated') as any) } catch {} }}
+              onNoticeClose={() => setInlineCreate(null)}
+            />
+          </div>
+        </div>
+      )}
     </section>
   )
 }
