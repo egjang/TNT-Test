@@ -28,9 +28,12 @@ Thumbs.db
 # 로그
 *.log
 
-# 환경 변수
+# 환경 변수 및 민감한 설정 파일
 .env
 .env.local
+backend/src/main/resources/application.yml
+backend/src/main/resources/application-*.yml
+tnt_sales_dlv/backend/application.yml
 
 # 임시 파일
 *.tmp
