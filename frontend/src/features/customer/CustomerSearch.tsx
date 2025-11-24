@@ -47,8 +47,14 @@ type Customer = {
   deptName?: string
 }
 
-type Props = { compact?: boolean; maxHeight?: string; context?: 'c360' | 'list' }
-export function CustomerSearch({ compact = false, maxHeight, context = 'list' }: Props) {
+type Props = {
+  compact?: boolean;
+  maxHeight?: string;
+  context?: 'c360' | 'list';
+  onSelect?: (customer: Customer) => void;
+  autoSelectFirst?: boolean;
+}
+export function CustomerSearch({ compact = false, maxHeight, context = 'list', onSelect, autoSelectFirst = true }: Props) {
   const [q, setQ] = useState('') // customer_name
   const [provinceName, setProvinceName] = useState('')
   const [cityName, setCityName] = useState('')
@@ -72,11 +78,11 @@ export function CustomerSearch({ compact = false, maxHeight, context = 'list' }:
   const [loadingMore, setLoadingMore] = useState(false)
   const listRef = React.useRef<HTMLDivElement | null>(null)
   const [activeCustomerSeq, setActiveCustomerSeq] = useState<number | null>(() => {
-    try { const raw = localStorage.getItem('tnt.sales.selectedCustomer'); if (raw) { const o = JSON.parse(raw); const v = Number(o?.customerSeq); return Number.isFinite(v) ? v : null } } catch {}
+    try { const raw = localStorage.getItem('tnt.sales.selectedCustomer'); if (raw) { const o = JSON.parse(raw); const v = Number(o?.customerSeq); return Number.isFinite(v) ? v : null } } catch { }
     return null
   })
   const [activeCustomerId, setActiveCustomerId] = useState<string | null>(() => {
-    try { const raw = localStorage.getItem('tnt.sales.selectedCustomer'); if (raw) { const o = JSON.parse(raw); const v = String(o?.customerId || ''); return v || null } } catch {}
+    try { const raw = localStorage.getItem('tnt.sales.selectedCustomer'); if (raw) { const o = JSON.parse(raw); const v = String(o?.customerId || ''); return v || null } } catch { }
     return null
   })
   const userDisplay = useMemo(() => {
@@ -181,7 +187,7 @@ export function CustomerSearch({ compact = false, maxHeight, context = 'list' }:
       if (!reset) setPageOffset(prev => prev + PAGE_SIZE)
       else setPageOffset(PAGE_SIZE)
       // Select first row on initial load only
-      if (reset && !initialized && sorted.length > 0) {
+      if (reset && !initialized && sorted.length > 0 && autoSelectFirst) {
         selectCustomer(sorted[0])
         setInitialized(true)
       }
@@ -194,7 +200,7 @@ export function CustomerSearch({ compact = false, maxHeight, context = 'list' }:
           urlCnt.searchParams.set('assigneeId', savedAssigneeId)
           const rc = await fetch(urlCnt.toString())
           if (rc.ok) {
-            const obj = await rc.json().catch(()=> ({} as any))
+            const obj = await rc.json().catch(() => ({} as any))
             const n = Number((obj as any)?.total ?? 0)
             setTotalMineCount(Number.isFinite(n) ? n : 0)
           } else { setTotalMineCount(0) }
@@ -226,7 +232,7 @@ export function CustomerSearch({ compact = false, maxHeight, context = 'list' }:
           setActiveCustomerSeq(Number.isFinite(seq) ? seq : null)
           setActiveCustomerId(o?.customerId || null)
         }
-      } catch {}
+      } catch { }
     }
     window.addEventListener('tnt.sales.customer.selected' as any, onSelected)
     return () => window.removeEventListener('tnt.sales.customer.selected' as any, onSelected)
@@ -297,7 +303,8 @@ export function CustomerSearch({ compact = false, maxHeight, context = 'list' }:
     try {
       localStorage.setItem('tnt.sales.selectedCustomer', JSON.stringify(row || {}))
       window.dispatchEvent(new CustomEvent('tnt.sales.customer.selected', { detail: { source: 'customer-search', customer: row } }) as any)
-    } catch {}
+      if (onSelect) onSelect(row)
+    } catch { }
     setActiveCustomerSeq((() => { const v = Number((row as any).customerSeq); return Number.isFinite(v) ? v : null })())
     setActiveCustomerId(row.customerId || null)
     // Close any open menus/bubbles
@@ -319,6 +326,32 @@ export function CustomerSearch({ compact = false, maxHeight, context = 'list' }:
   }
 
   const table = useMemo(() => {
+    const renderCompanyBadge = (type?: string) => {
+      const key = (type || '').trim().toUpperCase()
+      if (key !== 'TNT' && key !== 'DYS') return null
+      const bg = key === 'TNT' ? '#2563eb' : '#16a34a'
+      return (
+        <span
+          aria-label={key}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 18,
+            height: 18,
+            borderRadius: '50%',
+            color: '#fff',
+            fontWeight: 700,
+            fontSize: 11,
+            background: bg,
+            flexShrink: 0,
+          }}
+        >
+          {key === 'TNT' ? 'T' : 'D'}
+        </span>
+      )
+    }
+
     const buildBubble = (row: Customer) => {
       const lines = [
         `거래처번호: ${row.customerId || ''}`,
@@ -343,156 +376,166 @@ export function CustomerSearch({ compact = false, maxHeight, context = 'list' }:
     return (
       <>
         <div ref={listRef} className="table-container" onClick={() => setMenu({ open: false, x: 0, y: 0 })} style={{ maxHeight: maxHeight ?? (compact ? '32vh' : undefined), overflow: 'auto' }}>
-        {items.length === 0 ? (
-          <div className="empty-state">{tone.empty}</div>
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th style={{ width: 36, textAlign: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={items.length > 0 && selected.size === items.length}
-                    indeterminate={(undefined as any)}
-                    onChange={(e) => toggleAll(e.target.checked)}
-                  />
-                </th>
-                <th style={{ width: 140 }}>{context === 'c360' ? '회사구분' : '거래처번호'}</th>
-                <th style={{ width: 200 }}>거래처명</th>
-                <th style={{ width: 80 }}>추가정보</th>
-                
-                <th style={{ width: 140 }}>사업자번호</th>
-                <th style={{ width: 120 }}>대표자명</th>
-                <th style={{ width: 120 }}>업태</th>
-                <th style={{ width: 120 }}>종목</th>
-                <th style={{ width: 130 }}>전화번호</th>
-                <th style={{ width: 120 }}>담당자명</th>
-                <th style={{ width: 140 }}>부서명</th>
-                <th style={{ width: 120 }}>시/도</th>
-                <th style={{ width: 120 }}>시/군/구</th>
-                <th style={{ width: 120 }}>고객유형</th>
-                <th>비고</th>
-                <th style={{ width: 120 }}>생성자</th>
-                <th style={{ width: 120 }}>수정자</th>
-                <th style={{ width: 180 }}>생성일시</th>
-                <th style={{ width: 180 }}>수정일시</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((it, idx) => (
-                <tr
-                  key={idx}
-                  className={(Number((it as any).customerSeq || 0) === (activeCustomerSeq || -1) || (!!activeCustomerId && it.customerId === activeCustomerId)) ? 'selected' : undefined}
-                  onClick={() => selectCustomer(it)}
-                  onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); hideInfoBubble(); setMenu({ open: true, x: e.clientX, y: e.clientY, row: it }) }}
-                >
-                  <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+          {items.length === 0 ? (
+            <div className="empty-state">{tone.empty}</div>
+          ) : (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th style={{ width: 36, textAlign: 'center' }}>
                     <input
                       type="checkbox"
-                      checked={selected.has(it.customerId)}
-                      onChange={(e) => toggleOne(it.customerId, e.target.checked)}
+                      checked={items.length > 0 && selected.size === items.length}
+                      onChange={(e) => toggleAll(e.target.checked)}
                     />
-                  </td>
-                  <td onMouseEnter={(e) => showInfoBubble(e, it)} onMouseMove={moveInfoBubble} onMouseLeave={hideInfoBubble}>
-                    {context === 'c360' ? (it.companyType || '') : it.customerId}
-                  </td>
-                  <td>{it.customerName}</td>
-                  <td>{(() => {
-                    const seq = Number((it as any).customerSeq || 0)
-                    const hasSales = !!recentMap[seq]
-                    const hasDemand = !!demandMap[seq]
-                    if (!hasSales && !hasDemand) return ''
-                    return (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {hasSales && (
-                          <img src={moneyIconUrl} className="icon" alt="" title="최근2년 매출 있음" style={{ width: 14, height: 14 }} />
-                        )}
-                        {hasDemand && (
-                          <img src={demandIconUrl} className="icon" alt="" title="수요 있음" style={{ width: 14, height: 14 }} />
-                        )}
-                      </div>
-                    )
-                  })()}</td>
-                  
-                  
-                  <td>{it.bizNo || ''}</td>
-                  <td>{it.ownerName || ''}</td>
-                  <td>{it.bizKind || ''}</td>
-                  <td>{it.bizType || ''}</td>
-                  <td>{it.telNo || ''}</td>
-                  <td>{it.empName || ''}</td>
-                  <td>{it.deptName || ''}</td>
-                  <td>{it.addrProvinceName || ''}</td>
-                  <td>{it.addrCityName || ''}</td>
-                  <td>{it.customerTypeName || ''}</td>
-                  <td>{it.customerRemark || ''}</td>
-                  <td>{it.createdBy ?? ''}</td>
-                  <td>{it.updatedBy ?? ''}</td>
-                  <td>{fmt(it.createdAt)}</td>
-                  <td>{fmt(it.updatedAt)}</td>
+                  </th>
+                  <th style={{ width: 140 }}>거래처번호</th>
+                  <th style={{ width: 200 }}>거래처명</th>
+                  <th style={{ width: 80 }}>추가정보</th>
+
+                  <th style={{ width: 140 }}>사업자번호</th>
+                  <th style={{ width: 120 }}>대표자명</th>
+                  <th style={{ width: 120 }}>업태</th>
+                  <th style={{ width: 120 }}>종목</th>
+                  <th style={{ width: 130 }}>전화번호</th>
+                  <th style={{ width: 120 }}>담당자명</th>
+                  <th style={{ width: 140 }}>부서명</th>
+                  <th style={{ width: 120 }}>시/도</th>
+                  <th style={{ width: 120 }}>시/군/구</th>
+                  <th style={{ width: 120 }}>고객유형</th>
+                  <th>비고</th>
+                  <th style={{ width: 120 }}>생성자</th>
+                  <th style={{ width: 120 }}>수정자</th>
+                  <th style={{ width: 180 }}>생성일시</th>
+                  <th style={{ width: 180 }}>수정일시</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        {loadingMore && <div className="muted" style={{ padding: '6px 8px' }}>{tone.loading}</div>}
-        {!loading && !loadingMore && !hasMore && items.length > 0 && (
-          <div className="muted" style={{ padding: '8px 10px', textAlign: 'center' }}>마지막 데이터입니다.</div>
-        )}
-        {menu.open && (
-          <div className="context-menu" style={{ left: menu.x + 4, top: menu.y + 4 }} onClick={(e) => e.stopPropagation()}>
-            {context !== 'c360' ? (
-              <>
-                <button className="context-item" onClick={() => {
-                  try { localStorage.setItem('tnt.sales.selectedCustomer', JSON.stringify(menu.row || {})); window.dispatchEvent(new CustomEvent('tnt.sales.customer.selected', { detail: { source: 'customer-search', customer: menu.row } })) } catch {}
-                  const btn = document.querySelector('button[data-key="customer:c360"]') as HTMLButtonElement | null
+              </thead>
+              <tbody>
+                {items.map((it, idx) => (
+                  <tr
+                    key={idx}
+                    className={(Number((it as any).customerSeq || 0) === (activeCustomerSeq || -1) || (!!activeCustomerId && it.customerId === activeCustomerId)) ? 'selected' : undefined}
+                    onClick={() => selectCustomer(it)}
+                    onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); hideInfoBubble(); setMenu({ open: true, x: e.clientX, y: e.clientY, row: it }) }}
+                  >
+                    <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selected.has(it.customerId)}
+                        onChange={(e) => toggleOne(it.customerId, e.target.checked)}
+                      />
+                    </td>
+                    <td onMouseEnter={(e) => showInfoBubble(e, it)} onMouseMove={moveInfoBubble} onMouseLeave={hideInfoBubble}>
+                      {it.customerId}
+                    </td>
+                    <td>
+                      {context === 'c360' ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {renderCompanyBadge(it.companyType)}
+                          <span>{it.customerName}</span>
+                        </div>
+                      ) : it.customerName}
+                    </td>
+                    <td>{(() => {
+                      const seq = Number((it as any).customerSeq || 0)
+                      const hasSales = !!recentMap[seq]
+                      const hasDemand = !!demandMap[seq]
+                      if (!hasSales && !hasDemand) return ''
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {hasSales && (
+                            <img src={moneyIconUrl} className="icon" alt="" title="최근2년 매출 있음" style={{ width: 14, height: 14 }} />
+                          )}
+                          {hasDemand && (
+                            <img src={demandIconUrl} className="icon" alt="" title="수요 있음" style={{ width: 14, height: 14 }} />
+                          )}
+                        </div>
+                      )
+                    })()}</td>
+
+
+                    <td>{it.bizNo || ''}</td>
+                    <td>{it.ownerName || ''}</td>
+                    <td>{it.bizKind || ''}</td>
+                    <td>{it.bizType || ''}</td>
+                    <td>{it.telNo || ''}</td>
+                    <td>{it.empName || ''}</td>
+                    <td>{it.deptName || ''}</td>
+                    <td>{it.addrProvinceName || ''}</td>
+                    <td>{it.addrCityName || ''}</td>
+                    <td>{it.customerTypeName || ''}</td>
+                    <td>{it.customerRemark || ''}</td>
+                    <td>{it.createdBy ?? ''}</td>
+                    <td>{it.updatedBy ?? ''}</td>
+                    <td>{fmt(it.createdAt)}</td>
+                    <td>{fmt(it.updatedAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {loadingMore && <div className="muted" style={{ padding: '6px 8px' }}>{tone.loading}</div>}
+          {!loading && !loadingMore && !hasMore && items.length > 0 && (
+            <div className="muted" style={{ padding: '8px 10px', textAlign: 'center' }}>마지막 데이터입니다.</div>
+          )}
+          {menu.open && (
+            <div className="context-menu" style={{ left: menu.x + 4, top: menu.y + 4 }} onClick={(e) => e.stopPropagation()}>
+              {context !== 'c360' ? (
+                <>
+                  <button className="context-item" onClick={() => {
+                    try { localStorage.setItem('tnt.sales.selectedCustomer', JSON.stringify(menu.row || {})); window.dispatchEvent(new CustomEvent('tnt.sales.customer.selected', { detail: { source: 'customer-search', customer: menu.row } })) } catch { }
+                    const btn = document.querySelector('button[data-key="customer:c360"]') as HTMLButtonElement | null
+                    if (btn) btn.click()
+                    setMenu({ open: false, x: 0, y: 0 })
+                  }}>C360</button>
+                  <button className="context-item" onClick={() => {
+                    try { localStorage.setItem('tnt.sales.selectedCustomer', JSON.stringify(menu.row || {})); window.dispatchEvent(new CustomEvent('tnt.sales.customer.selected', { detail: { source: 'customer-search', customer: menu.row } })) } catch { }
+                    window.dispatchEvent(new CustomEvent('tnt.sales.navigate', { detail: { key: 'sales-mgmt:receivables' } }) as any)
+                    setMenu({ open: false, x: 0, y: 0 })
+                  }}>미수현황</button>
+                </>
+              ) : null}
+              <button className="context-item" onClick={() => {
+                try { localStorage.setItem('tnt.sales.selectedCustomer', JSON.stringify(menu.row || {})); window.dispatchEvent(new CustomEvent('tnt.sales.customer.selected', { detail: { source: 'customer-search', customer: menu.row } })) } catch { }
+                if (context === 'c360') {
+                  try { window.dispatchEvent(new CustomEvent('tnt.sales.activity.create.inline', { detail: { customer: menu.row } }) as any) } catch {}
+                } else {
+                  const btn = document.querySelector('button[data-key="customer:sales-activity-new"]') as HTMLButtonElement | null
                   if (btn) btn.click()
-                  setMenu({ open: false, x: 0, y: 0 })
-                }}>C360</button>
-                <button className="context-item" onClick={() => {
-                  try { localStorage.setItem('tnt.sales.selectedCustomer', JSON.stringify(menu.row || {})); window.dispatchEvent(new CustomEvent('tnt.sales.customer.selected', { detail: { source: 'customer-search', customer: menu.row } })) } catch {}
-                  window.dispatchEvent(new CustomEvent('tnt.sales.navigate', { detail: { key: 'sales-mgmt:receivables' } }) as any)
-                  setMenu({ open: false, x: 0, y: 0 })
-                }}>미수현황</button>
-              </>
-            ) : null}
-            <button className="context-item" onClick={() => {
-              try { localStorage.setItem('tnt.sales.selectedCustomer', JSON.stringify(menu.row || {})); window.dispatchEvent(new CustomEvent('tnt.sales.customer.selected', { detail: { source: 'customer-search', customer: menu.row } })) } catch {}
-              const btn = document.querySelector('button[data-key="customer:sales-activity-new"]') as HTMLButtonElement | null
-              if (btn) btn.click()
-              setMenu({ open: false, x: 0, y: 0 })
-            }}>활동등록</button>
-          </div>
-        )}
-        {bubble.open && bubble.row && (
-          <div
-            className="context-menu"
-            style={{ left: bubble.x + 6, top: bubble.y + 6, maxWidth: 500, padding: 10 }}
-            onClick={(e) => e.stopPropagation()}
-            onMouseLeave={hideInfoBubble}
-          >
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>거래처 정보</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 6, maxWidth: 480 }}>
-              <div className="muted">거래처번호</div><div>{bubble.row.customerId || ''}</div>
-              <div className="muted">거래처명</div><div>{bubble.row.customerName || ''}</div>
-              {bubble.row.customerFullName ? (<><div className="muted">정식명</div><div>{bubble.row.customerFullName}</div></>) : null}
-              {bubble.row.bizNo ? (<><div className="muted">사업자번호</div><div>{bubble.row.bizNo}</div></>) : null}
-              {bubble.row.ownerName ? (<><div className="muted">대표자명</div><div>{bubble.row.ownerName}</div></>) : null}
-              {bubble.row.bizKind ? (<><div className="muted">업태</div><div>{bubble.row.bizKind}</div></>) : null}
-              {bubble.row.bizType ? (<><div className="muted">종목</div><div>{bubble.row.bizType}</div></>) : null}
-              {bubble.row.telNo ? (<><div className="muted">전화번호</div><div>{bubble.row.telNo}</div></>) : null}
-              {bubble.row.empName ? (<><div className="muted">담당자명</div><div>{bubble.row.empName}</div></>) : null}
-              {bubble.row.deptName ? (<><div className="muted">부서명</div><div>{bubble.row.deptName}</div></>) : null}
-              {bubble.row.addrProvinceName ? (<><div className="muted">시/도</div><div>{bubble.row.addrProvinceName}</div></>) : null}
-              {bubble.row.addrCityName ? (<><div className="muted">시/군/구</div><div>{bubble.row.addrCityName}</div></>) : null}
-              {bubble.row.customerTypeName ? (<><div className="muted">고객유형</div><div>{bubble.row.customerTypeName}</div></>) : null}
-              {bubble.row.customerRemark ? (<><div className="muted">비고</div><div>{bubble.row.customerRemark}</div></>) : null}
-              {bubble.row.createdAt ? (<><div className="muted">생성일시</div><div>{fmt(bubble.row.createdAt)}</div></>) : null}
-              {bubble.row.updatedAt ? (<><div className="muted">수정일시</div><div>{fmt(bubble.row.updatedAt)}</div></>) : null}
+                }
+                setMenu({ open: false, x: 0, y: 0 })
+              }}>활동등록</button>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+          {bubble.open && bubble.row && (
+            <div
+              className="context-menu"
+              style={{ left: bubble.x + 6, top: bubble.y + 6, maxWidth: 500, padding: 10 }}
+              onClick={(e) => e.stopPropagation()}
+              onMouseLeave={hideInfoBubble}
+            >
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>거래처 정보</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 6, maxWidth: 480 }}>
+                <div className="muted">거래처번호</div><div>{bubble.row.customerId || ''}</div>
+                <div className="muted">거래처명</div><div>{bubble.row.customerName || ''}</div>
+                {bubble.row.customerFullName ? (<><div className="muted">정식명</div><div>{bubble.row.customerFullName}</div></>) : null}
+                {bubble.row.bizNo ? (<><div className="muted">사업자번호</div><div>{bubble.row.bizNo}</div></>) : null}
+                {bubble.row.ownerName ? (<><div className="muted">대표자명</div><div>{bubble.row.ownerName}</div></>) : null}
+                {bubble.row.bizKind ? (<><div className="muted">업태</div><div>{bubble.row.bizKind}</div></>) : null}
+                {bubble.row.bizType ? (<><div className="muted">종목</div><div>{bubble.row.bizType}</div></>) : null}
+                {bubble.row.telNo ? (<><div className="muted">전화번호</div><div>{bubble.row.telNo}</div></>) : null}
+                {bubble.row.empName ? (<><div className="muted">담당자명</div><div>{bubble.row.empName}</div></>) : null}
+                {bubble.row.deptName ? (<><div className="muted">부서명</div><div>{bubble.row.deptName}</div></>) : null}
+                {bubble.row.addrProvinceName ? (<><div className="muted">시/도</div><div>{bubble.row.addrProvinceName}</div></>) : null}
+                {bubble.row.addrCityName ? (<><div className="muted">시/군/구</div><div>{bubble.row.addrCityName}</div></>) : null}
+                {bubble.row.customerTypeName ? (<><div className="muted">고객유형</div><div>{bubble.row.customerTypeName}</div></>) : null}
+                {bubble.row.customerRemark ? (<><div className="muted">비고</div><div>{bubble.row.customerRemark}</div></>) : null}
+                {bubble.row.createdAt ? (<><div className="muted">생성일시</div><div>{fmt(bubble.row.createdAt)}</div></>) : null}
+                {bubble.row.updatedAt ? (<><div className="muted">수정일시</div><div>{fmt(bubble.row.updatedAt)}</div></>) : null}
+              </div>
+            </div>
+          )}
+        </div>
       </>
     )
   }, [items, menu, selected, bubble])
@@ -503,7 +546,7 @@ export function CustomerSearch({ compact = false, maxHeight, context = 'list' }:
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', flex: '1 1 auto', minWidth: 0 }}>
           <select
             value={filterMode}
-            onChange={(e)=> setFilterMode(e.target.value as FilterMode)}
+            onChange={(e) => setFilterMode(e.target.value as FilterMode)}
             style={{
               height: 30,
               padding: '2px 8px',
@@ -541,7 +584,7 @@ export function CustomerSearch({ compact = false, maxHeight, context = 'list' }:
             placeholder="시/군/구"
             style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--border)', minWidth: 120 }}
           />
-          <button className="btn" onClick={runSearch} disabled={loading} style={{ height: 30, padding: '0 12px' }}>조회</button>
+          <button className="btn" onClick={() => runSearch()} disabled={loading} style={{ height: 30, padding: '0 12px' }}>조회</button>
           {loading && <span className="muted" style={{ lineHeight: '30px' }}>{tone.loading}</span>}
         </div>
         <div className="meta" style={{ gap: 0 }}>

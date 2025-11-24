@@ -28,9 +28,16 @@ import { SalesDashboard } from '../sales_dashboard/SalesDashboard'
 import { SalesMgmtSales } from '../sales_mgmt/SalesMgmtSales'
 import { SalesMgmtReceivables } from '../sales_mgmt/SalesMgmtReceivables'
 import { SalesMgmtActivities } from '../sales_mgmt/SalesMgmtActivities'
-import { InventoryView } from '../inventory/InventoryView'
-import { ExpiryStockView } from '../inventory/ExpiryStockView'
-import { ExpiryDexView } from '../inventory/ExpiryDexView'
+import { ExpiryInventoryAGView } from '../inventory/ExpiryInventoryAGView'
+import { ItemUnitAnalysis } from '../lab/ItemUnitAnalysis'
+import { PriceSim } from '../lab/PriceSim'
+import { PriceSimUnit } from '../lab/PriceSimUnit'
+import { PriceSimulation } from '../lab/PriceSimulation'
+import { VibeWorkspace } from '../lab/VibeWorkspace'
+import { ARAgingDashboard } from '../credit/ARAgingDashboard'
+import { CreditMeetingList } from '../credit/CreditMeetingList'
+import { CreditMeetingDetail } from '../credit/CreditMeetingDetail'
+import { UnblockingRequestForm } from '../credit/UnblockingRequestForm'
 
 type Props = { selectedKey: string }
 
@@ -85,14 +92,23 @@ export function MainView({ selectedKey }: Props) {
         <Estimate />
       ) : selectedKey === 'item360' ? (
         <Item360 />
-      ) : selectedKey === 'inventory' || selectedKey === 'inventory:old' ? (
-        <InventoryView />
-      ) : selectedKey === 'inventory:expiry' ? (
-        <ExpiryStockView />
-      ) : selectedKey === 'inventory:dex' ? (
-        <ExpiryDexView />
+      ) : selectedKey === 'inventory:expiry-ag' ? (
+        <ExpiryInventoryAGView />
       ) : selectedKey === 'complaint' ? (
         <Complaint />
+      ) : selectedKey === 'credit:ar-aging' ? (
+        <ARAgingDashboard />
+      ) : selectedKey === 'credit:meetings' ? (
+        <CreditMeetingList />
+      ) : selectedKey.startsWith('credit:meeting:') ? (
+        <CreditMeetingDetail />
+      ) : selectedKey === 'credit:unblocking' ? (
+        <UnblockingRequestForm />
+      ) : selectedKey === 'sales-receivables' ? (
+        <section>
+          <h1>매출/채권</h1>
+          <div className="empty-state">매출·채권 관리 화면이 준비중입니다.</div>
+        </section>
       ) : selectedKey === 'settings' ? (
         <Settings />
       ) : selectedKey === 'sales-mgmt:sales' ? (
@@ -101,6 +117,16 @@ export function MainView({ selectedKey }: Props) {
         <SalesMgmtReceivables />
       ) : selectedKey === 'sales-mgmt:activities' ? (
         <SalesMgmtActivities />
+      ) : selectedKey === 'lab:vibe-workspace' ? (
+        <VibeWorkspace />
+      ) : selectedKey === 'lab:unit-analysis' ? (
+        <ItemUnitAnalysis />
+      ) : selectedKey === 'lab:price-sim' ? (
+        <PriceSim />
+      ) : selectedKey === 'lab:price-sim-unit' ? (
+        <PriceSimUnit />
+      ) : selectedKey === 'lab:price-simulation' ? (
+        <PriceSimulation />
       ) : selectedKey === 'demand:list' && flags.demandManagement ? (
         <DemandList />
       ) : selectedKey === 'sales-targets' && flags.demandManagement ? (

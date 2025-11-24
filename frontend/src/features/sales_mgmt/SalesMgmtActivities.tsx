@@ -217,9 +217,8 @@ export function SalesMgmtActivities() {
     return data.map((p) => {
       const plan = p.prevWeek.plan
       const actual = p.prevWeek.actual
-      const denom = plan + actual
-      const rate = denom > 0 ? (actual / denom) * 100 : 0
-      return { ...p, achievementRate: rate, prevTotal: denom }
+      const rate = plan > 0 ? (actual / plan) * 100 : 0
+      return { ...p, achievementRate: rate, prevTotal: plan }
     })
   }, [data])
 
@@ -228,9 +227,8 @@ export function SalesMgmtActivities() {
     return regionData.map((p) => {
       const plan = p.prevWeek.plan
       const actual = p.prevWeek.actual
-      const denom = plan + actual
-      const rate = denom > 0 ? (actual / denom) * 100 : 0
-      return { ...p, achievementRate: rate, prevTotal: denom }
+      const rate = plan > 0 ? (actual / plan) * 100 : 0
+      return { ...p, achievementRate: rate, prevTotal: plan }
     })
   }, [regionData])
 

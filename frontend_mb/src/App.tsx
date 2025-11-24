@@ -5,9 +5,8 @@ import { MobileOrderForm } from './features/order/MobileOrderForm'
 import { MobileActivityPage } from './features/activity/MobileActivityPage'
 import { MobileActivityManagement } from './features/activity/MobileActivityManagement'
 import { MobileWeeklySchedule } from './features/activity/MobileWeeklySchedule'
-import { MobileInventoryView } from './features/inventory/MobileInventoryView'
 
-type Page = 'menu' | 'order' | 'activity' | 'activity-mgmt' | 'weekly-schedule' | 'inventory'
+type Page = 'menu' | 'order' | 'activity' | 'activity-mgmt' | 'weekly-schedule'
 
 export default function App() {
   const [loggedIn, setLoggedIn] = useState<boolean>(() => {
@@ -46,10 +45,6 @@ export default function App() {
 
   if (currentPage === 'weekly-schedule') {
     return <MobileWeeklySchedule onBack={() => setCurrentPage('menu')} />
-  }
-
-  if (currentPage === 'inventory') {
-    return <MobileInventoryView onBack={() => setCurrentPage('menu')} />
   }
 
   return <MobileMenu onNavigate={(page) => setCurrentPage(page)} />

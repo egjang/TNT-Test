@@ -1,24 +1,28 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react'
-import { SalesActivityForm } from '../customer/SalesActivityForm'
+import { SalesActivityForm, type SalesActivityInitial } from '../customer/SalesActivityForm'
 
 type Day = { date: Date; inMonth: boolean; isToday: boolean }
 type CalendarActivity = {
   id: number
   subject?: string
+  customerName?: string
   plannedStartAt?: string
   plannedEndAt?: string | null
   activityStatus?: string
   leadId?: string | null
+  source?: 'sales' | 'region'
 }
 type CalendarEvent = {
   id: number
   subject?: string
+  customerName?: string
   status?: string
   time?: string
   endTime?: string
-  start?: Date
-  end?: Date
+  start: Date
+  end: Date
   leadId?: string | null
+  source?: 'sales' | 'region'
 }
 
 function startOfMonth(d: Date) { const x = new Date(d); x.setDate(1); x.setHours(0,0,0,0); return x }
@@ -29,13 +33,15 @@ function isSameDay(a: Date, b: Date) { return a.getFullYear()===b.getFullYear() 
 export function CalendarView() {
   const [cursor, setCursor] = useState<Date>(() => startOfMonth(new Date()))
   const today = new Date()
-  const [items, setItems] = useState<CalendarActivity[]>([])
+  const [salesItems, setSalesItems] = useState<CalendarActivity[]>([])
+  const [regionItems, setRegionItems] = useState<CalendarActivity[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [view, setView] = useState<'month'|'week'|'day'>('month')
-  const [menu, setMenu] = useState<{ open: boolean; x: number; y: number; event?: CalendarEvent }>({ open: false, x: 0, y: 0 })
+  const [menu, setMenu] = useState<{ open: boolean; x: number; y: number; event?: CalendarEvent; date?: Date }>({ open: false, x: 0, y: 0, event: undefined, date: undefined })
   const [refreshKey, setRefreshKey] = useState(0)
   const [editingActivityId, setEditingActivityId] = useState<number | null>(null)
+  const [createInitial, setCreateInitial] = useState<SalesActivityInitial | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; event?: CalendarEvent; customerName?: string }>({ open: false })
 
   const days: Day[] = useMemo(() => {
@@ -78,23 +84,27 @@ export function CalendarView() {
   }, [cursor, view])
 
   useEffect(() => {
-    // Load my activities for the calendar
+    // Load my activities (sales + region) for the calendar
     const assigneeId = localStorage.getItem('tnt.sales.assigneeId')
     if (!assigneeId) {
       setError('로그인이 필요합니다')
-      setItems([])
+      setSalesItems([])
+      setRegionItems([])
+      setLoading(false)
       return
     }
     setError(null)
     setLoading(true)
     ;(async () => {
+      const errors: string[] = []
+      const first = new Date(days[0].date); first.setHours(0,0,0,0)
+      const last = new Date(days[days.length-1].date); last.setHours(23,59,59,999)
+
+      // Sales activities
       try {
         const url = new URL('/api/v1/sales-activities', window.location.origin)
         url.searchParams.set('mineOnly', 'true')
         url.searchParams.set('assigneeId', String(assigneeId))
-        // request only visible range
-        const first = new Date(days[0].date); first.setHours(0,0,0,0)
-        const last = new Date(days[days.length-1].date); last.setHours(23,59,59,999)
         url.searchParams.set('start', first.toISOString())
         url.searchParams.set('end', last.toISOString())
         const res = await fetch(url.toString())
@@ -107,29 +117,64 @@ export function CalendarView() {
         const list = Array.isArray(data) ? data.map((x: any) => ({
           id: Number(x?.id),
           subject: x?.subject ?? undefined,
+          customerName: x?.customerName ?? x?.customer_name ?? undefined,
           plannedStartAt: x?.plannedStartAt ?? x?.planned_start_at ?? undefined,
           plannedEndAt: x?.plannedEndAt ?? x?.planned_end_at ?? null,
           activityStatus: x?.activityStatus ?? x?.activity_status ?? undefined,
           leadId: x?.sfLeadId ?? x?.sf_lead_id ?? x?.leadId ?? x?.lead_id ?? null,
+          source: 'sales' as const,
         })) : []
-        setItems(list)
+        setSalesItems(list)
       } catch (e: any) {
-        setError(e.message || '활동 조회 중 오류가 발생했습니다')
-      } finally {
-        setLoading(false)
+        errors.push(e?.message || '활동 조회 중 오류가 발생했습니다')
+        setSalesItems([])
       }
+
+      // Region activity plans
+      try {
+        const url = new URL('/api/v1/region-activity-plans', window.location.origin)
+        url.searchParams.set('assigneeId', String(assigneeId))
+        url.searchParams.set('start', first.toISOString())
+        url.searchParams.set('end', last.toISOString())
+        const res = await fetch(url.toString())
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = await res.json()
+        const list = Array.isArray(data) ? data.map((x: any) => {
+          const plannedStartAt = x?.plannedStartAt ?? x?.planned_start_at ?? null
+          const plannedEndAt = x?.plannedEndAt ?? x?.planned_end_at ?? null
+          const hasActual = !!(x?.actualStartAt || x?.actual_start_at || x?.actualEndAt || x?.actual_end_at)
+          const subject = x?.subject ? `[지역] ${x.subject}` : '지역활동'
+          return {
+            id: Number(x?.id),
+            subject,
+            plannedStartAt: plannedStartAt || undefined,
+            plannedEndAt: plannedEndAt || null,
+            activityStatus: hasActual ? 'completed' : 'region',
+            leadId: null,
+            source: 'region' as const,
+          }
+        }) : []
+        setRegionItems(list)
+      } catch (e: any) {
+        errors.push(e?.message || '지역활동 조회 중 오류가 발생했습니다')
+        setRegionItems([])
+      }
+
+      setError(errors.length ? errors.join(' / ') : null)
+      setLoading(false)
     })()
   }, [cursor, view, days, refreshKey])
 
   // Group activities by day within the visible range
   const dayEvents = useMemo(() => {
         const map = new Map<string, CalendarEvent[]>()
-    if (!items || items.length === 0) return map
+    const all = [...salesItems, ...regionItems]
+    if (!all || all.length === 0) return map
     // visible range
     const first = new Date(days[0].date)
     const last = new Date(days[days.length - 1].date)
     last.setHours(23,59,59,999)
-    for (const it of items) {
+    for (const it of all) {
       if (!it.plannedStartAt && !it.plannedEndAt) continue
       const start = it.plannedStartAt ? new Date(it.plannedStartAt) : null
       const end = it.plannedEndAt ? new Date(it.plannedEndAt) : start
@@ -146,17 +191,19 @@ export function CalendarView() {
       arr.push({
         id: it.id,
         subject: it.subject,
+        customerName: it.customerName,
         time,
         endTime,
         status: it.activityStatus,
         start: s,
         end: e,
         leadId: it.leadId ?? null,
+        source: it.source,
       })
       map.set(key, arr)
     }
     return map
-  }, [items, days])
+  }, [salesItems, regionItems, days])
 
   function minutesSinceMidnight(dt: Date) { return dt.getHours()*60 + dt.getMinutes() }
   function toTimeLabel(m: number) { const hh = Math.floor(m/60).toString().padStart(2,'0'); const mm = (m%60).toString().padStart(2,'0'); return `${hh}:${mm}` }
@@ -164,7 +211,8 @@ export function CalendarView() {
     const dayStart = new Date(date); dayStart.setHours(0,0,0,0)
     const dayEnd = new Date(date); dayEnd.setHours(23,59,59,999)
     const arr: CalendarEvent[] = []
-    for (const it of items) {
+    const all = [...salesItems, ...regionItems]
+    for (const it of all) {
       const s = it.plannedStartAt ? new Date(it.plannedStartAt) : null
       const e = it.plannedEndAt ? new Date(it.plannedEndAt) : s
       if (!s) continue
@@ -175,18 +223,20 @@ export function CalendarView() {
       arr.push({
         id: it.id,
         subject: it.subject,
+        customerName: it.customerName,
         status: it.activityStatus,
         start: clipStart,
         end: clipEnd,
         leadId: it.leadId ?? null,
+        source: it.source,
       })
     }
     arr.sort((a,b)=> a.start.getTime() - b.start.getTime())
     return arr
-  }, [items])
+  }, [salesItems, regionItems])
 
   const closeMenu = useCallback(() => {
-    setMenu({ open: false, x: 0, y: 0, event: undefined })
+    setMenu({ open: false, x: 0, y: 0, event: undefined, date: undefined })
   }, [])
 
   useEffect(() => {
@@ -209,9 +259,10 @@ export function CalendarView() {
   }, [menu.open, closeMenu])
 
   function onContextMenu(e: React.MouseEvent<HTMLDivElement>, event: CalendarEvent) {
+    if (event.source === 'region') return
     e.preventDefault()
     e.stopPropagation()
-    setMenu({ open: true, x: e.clientX, y: e.clientY, event })
+    setMenu({ open: true, x: e.clientX, y: e.clientY, event, date: event.start })
   }
 
   async function handleDeleteActivity(event: CalendarEvent) {
@@ -248,7 +299,7 @@ export function CalendarView() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
       // 로컬 state에서 즉시 제거
-      setItems((prev) => prev.filter((item) => item.id !== activityId))
+      setSalesItems((prev) => prev.filter((item) => item.id !== activityId))
 
       try { window.dispatchEvent(new CustomEvent('tnt.sales.activity.updated', { detail: { id: activityId } }) as any) } catch {}
       setDeleteConfirm({ open: false })
@@ -268,7 +319,7 @@ export function CalendarView() {
       // wait for render
       setTimeout(() => {
         document.querySelectorAll<HTMLDivElement>('.day-timeline').forEach(el => {
-          el.scrollTop = 7 * 40 // 07:00 at 40px per hour
+          el.scrollTop = 7 * 40 // 07:00 at base 40px per hour (approximate)
         })
       }, 0)
     }
@@ -306,6 +357,7 @@ export function CalendarView() {
   }
 
   async function handleActivityClick(event: CalendarEvent) {
+    if (event.source === 'region') return
     if (!event?.id) return
     setEditingActivityId(event.id)
   }
@@ -338,6 +390,51 @@ export function CalendarView() {
     return () => window.removeEventListener('keydown', handleEsc, true)
   }, [editingActivityId])
 
+  // Handle ESC key to close create modal
+  useEffect(() => {
+    if (!createInitial) return
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        setCreateInitial(null)
+      }
+    }
+    window.addEventListener('keydown', handleEsc, true)
+    return () => window.removeEventListener('keydown', handleEsc, true)
+  }, [createInitial])
+
+  const openCreateAt = useCallback((date: Date, customer?: any) => {
+    const d = new Date(date)
+    d.setHours(9, 0, 0, 0)
+    const toLocal = (dt: Date) => {
+      const yy = dt.getFullYear()
+      const mm = String(dt.getMonth() + 1).padStart(2, '0')
+      const dd = String(dt.getDate()).padStart(2, '0')
+      const hh = String(dt.getHours()).padStart(2, '0')
+      const mi = String(dt.getMinutes()).padStart(2, '0')
+      return `${yy}-${mm}-${dd}T${hh}:${mi}`
+    }
+    const custId = customer?.customerId ?? customer?.customer_id ?? undefined
+    const custName = customer?.customerName ?? customer?.customer_name ?? undefined
+    setCreateInitial({ plannedStartAt: toLocal(d), sfAccountId: custId, customerName: custName })
+  }, [])
+
+  // External request to open create modal (e.g., from C360)
+  useEffect(() => {
+    const handler = (e: any) => {
+      const detailDate = e?.detail?.date ? new Date(e.detail.date) : new Date()
+      const cust = e?.detail?.customer
+      openCreateAt(detailDate, cust)
+    }
+    window.addEventListener('tnt.sales.calendar.create' as any, handler as any)
+    window.addEventListener('tnt.sales.activity.create.inline' as any, handler as any)
+    return () => {
+      window.removeEventListener('tnt.sales.calendar.create' as any, handler as any)
+      window.removeEventListener('tnt.sales.activity.create.inline' as any, handler as any)
+    }
+  }, [openCreateAt])
+
   return (
     <>
       <section>
@@ -369,64 +466,134 @@ export function CalendarView() {
           ))}
           {view==='month' && days.map((d, i) => (
             <div key={i} style={{
+              position: 'relative',
               border:'1px solid var(--border)', borderRadius: 8, padding: 8,
               height: 120, overflow: 'hidden', display: 'flex', flexDirection: 'column',
               background: d.inMonth ? 'transparent' : 'var(--panel-2)',
               outline: d.isToday ? '2px solid var(--accent)' : 'none'
-            }}>
+            }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setMenu({ open: true, x: e.clientX, y: e.clientY, date: d.date, event: undefined }) }}>
               <div style={{ fontWeight: 600, marginBottom: 6, opacity: d.inMonth ? 1 : 0.6 }}>{d.date.getDate()}</div>
               {(() => {
                 const key = `${d.date.getFullYear()}-${String(d.date.getMonth()+1).padStart(2,'0')}-${String(d.date.getDate()).padStart(2,'0')}`
                 const evts = dayEvents.get(key) || []
                 if (!evts.length) return null
                 return (
-                  <div className="cal-events" style={{ overflow: 'hidden' }}>
-                    {evts.slice(0,3).map((evt, idx) => (
-                      <div key={idx} className={`cal-pill status-${(evt.status||'scheduled').replaceAll(' ','_')}`} title={evt.subject || ''}
-                        onClick={() => { void handleActivityClick(evt) }}
-                        onContextMenu={(e) => onContextMenu(e, evt)}
-                      >
-                        <span className="time">{evt.time}</span>
-                        <span className="subj">{evt.subject || '활동'}</span>
-                      </div>
-                    ))}
-                    {evts.length > 3 && (
-                      <div className="muted" style={{ fontSize:12, marginTop:4 }}>+{evts.length - 3} 더보기</div>
-                    )}
-                  </div>
+                  <>
+                    <div style={{ position:'absolute', top:6, right:8, fontSize:11, fontWeight:700, color:'#dc2626' }}>{evts.length}</div>
+                    <div className="cal-events" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {evts.map((evt, idx) => {
+                        const label = evt.customerName || evt.subject || '활동'
+                        const tooltip = evt.customerName && evt.subject ? `${evt.customerName} · ${evt.subject}` : (evt.customerName || evt.subject || '')
+                        return (
+                        <div key={idx} className={`cal-pill status-${(evt.status||'scheduled').replaceAll(' ','_')}`} title={tooltip}
+                          onClick={() => { if (evt.source !== 'region') void handleActivityClick(evt) }}
+                          onContextMenu={(e) => { if (evt.source !== 'region') onContextMenu(e, evt) }}
+                          style={{ cursor: evt.source === 'region' ? 'default' : 'pointer' }}
+                        >
+                          <span className="time">{evt.time}</span>
+                          <span className="subj">{label}</span>
+                        </div>
+                      )})}
+                    </div>
+                  </>
                 )
               })()}
             </div>
           ))}
           {(view==='week' || view==='day') && (() => {
-            const dayPx = 24*40; const pxPerMin = dayPx/(24*60)
+            const baseHourHeight = 40
+            const eventHeight = 18
+            const eventSpacing = 20
+
             return days.map((d, i) => {
               const key = `${d.date.getFullYear()}-${String(d.date.getMonth()+1).padStart(2,'0')}-${String(d.date.getDate()).padStart(2,'0')}`
               const evtsRaw = (dayEvents.get(key) || []).sort((a,b)=> (a.start!.getTime()-b.start!.getTime()))
               const evts = view==='day' ? eventsForDay(d.date) : evtsRaw
+
+              // Group events by hour
+              const eventsByHour: CalendarEvent[][] = Array.from({ length: 24 }, () => [])
+              evts.forEach(evt => {
+                const startMin = minutesSinceMidnight(evt.start!)
+                const endMinRaw = minutesSinceMidnight(evt.end!)
+                const endMin = endMinRaw > startMin ? endMinRaw : startMin
+                const startHour = Math.floor(startMin / 60)
+                const endHour = Math.floor(endMin / 60)
+
+                // Add to all hours this event spans
+                for (let h = startHour; h <= Math.min(endHour, 23); h++) {
+                  eventsByHour[h].push(evt)
+                }
+              })
+
+              // Calculate hour heights based on number of events in each hour
+              const hourHeights = eventsByHour.map(hourEvts => {
+                if (hourEvts.length === 0) return baseHourHeight
+                return baseHourHeight + (hourEvts.length - 1) * eventSpacing
+              })
+
+              const hourPositions = [0]
+              for (let h = 0; h < 24; h++) {
+                hourPositions.push(hourPositions[h] + hourHeights[h])
+              }
+              const dayPx = hourPositions[24]
+
               return (
-                <div key={i} style={{ border:'1px solid var(--border)', borderRadius: 8, padding: 8 }}>
+                <div key={i} style={{ border:'1px solid var(--border)', borderRadius: 8, padding: 8 }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setMenu({ open: true, x: e.clientX, y: e.clientY, date: d.date, event: undefined }) }}>
                   <div style={{ fontWeight: 600, marginBottom: 6 }}>{d.date.getDate()}</div>
-                  <div className="day-timeline" style={{ position:'relative', height: dayPx, borderTop:'1px solid var(--border)', overflowY:'auto', maxHeight: 480 }}>
-                    {[...Array(24)].map((_,h)=>(
-                      <div key={h} style={{ position:'absolute', top: h*40, left:0, right:0, borderTop:'1px dashed var(--border)', fontSize:10, color:'var(--muted)' }}>
-                        <span style={{ position:'absolute', left:0, transform:'translateY(-50%)', paddingLeft:4 }}>{h}:00</span>
-                      </div>
-                    ))}
-                    {evts.map((evt, idx) => {
-                      const startMin = minutesSinceMidnight(evt.start!)
-                      const endMin = minutesSinceMidnight(evt.end!)
-                      const top = startMin*pxPerMin
-                      const height = Math.max(20, (endMin-startMin)*pxPerMin)
+                  <div className="day-timeline" style={{ position:'relative', height: dayPx, borderTop:'1px solid var(--border)', overflowY:'auto', maxHeight: 640 }}>
+                    {/* Render each hour block */}
+                    {[...Array(24)].map((_,h) => {
+                      const hourEvts = eventsByHour[h]
+                      const hourTop = hourPositions[h]
+                      const hourHeight = hourHeights[h]
+
                       return (
-                        <div key={idx} className={`cal-pill status-${(evt.status||'scheduled').replaceAll(' ','_')}`}
-                          style={{ position:'absolute', top, left: 60, right: 4, height }}
-                          title={`${toTimeLabel(startMin)}~${toTimeLabel(endMin)} ${evt.subject||''}`}
-                          onClick={() => { void handleActivityClick(evt) }}
-                          onContextMenu={(e) => onContextMenu(e, evt)}
-                        >
-                          <span className="time">{toTimeLabel(startMin)}</span>
-                          <span className="subj">{evt.subject || '활동'}</span>
+                        <div key={h} style={{ position:'absolute', top: hourTop, left:0, right:0, height: hourHeight }}>
+                          {/* Hour marker */}
+                          <div style={{ position:'absolute', top: 0, left:0, right:0, borderTop:'1px dashed var(--border)', fontSize:10, color:'var(--muted)' }}>
+                            <span style={{ position:'absolute', left:0, transform:'translateY(-50%)', paddingLeft:4 }}>{h}:00</span>
+                          </div>
+
+                          {/* Events in this hour */}
+                          {hourEvts.map((evt, evtIdx) => {
+                            const startMin = minutesSinceMidnight(evt.start!)
+                            const endMinRaw = minutesSinceMidnight(evt.end!)
+                            const endMin = endMinRaw > startMin ? endMinRaw : startMin
+                            const startHour = Math.floor(startMin / 60)
+
+                            // Only render if this is the starting hour
+                            if (startHour !== h) return null
+
+                            const startMinInHour = startMin % 60
+                            const baseOffset = (startMinInHour / 60) * baseHourHeight
+                            const top = baseOffset + (evtIdx * eventSpacing)
+
+                            const durationMin = endMin - startMin
+                            const height = durationMin > 0 ? Math.max(eventHeight, (durationMin / 60) * baseHourHeight) : eventHeight
+
+                            const label = evt.customerName || evt.subject || '활동'
+                            const tooltip = evt.customerName && evt.subject ? `${evt.customerName} · ${evt.subject}` : (evt.customerName || evt.subject || '')
+
+                            return (
+                              <div key={evt.id} className={`cal-pill status-${(evt.status||'scheduled').replaceAll(' ','_')}`}
+                                style={{
+                                  position:'absolute',
+                                  top,
+                                  left: '60px',
+                                  width: 'calc(100% - 64px)',
+                                  height,
+                                  zIndex: evtIdx
+                                }}
+                                title={`${toTimeLabel(startMin)}~${toTimeLabel(endMin)} ${tooltip}`}
+                                onClick={() => { if (evt.source !== 'region') void handleActivityClick(evt) }}
+                                onContextMenu={(e) => { if (evt.source !== 'region') onContextMenu(e, evt) }}
+                                aria-disabled={evt.source === 'region' ? true : undefined}
+                              >
+                                <span className="time">{toTimeLabel(startMin)}</span>
+                                <span className="subj">{label}</span>
+                              </div>
+                            )
+                          })}
                         </div>
                       )
                     })}
@@ -435,13 +602,24 @@ export function CalendarView() {
               )
             })
           })()}
-        </div>
-        {menu.open && menu.event && (
+      </div>
+        {menu.open && (
           <div className="context-menu" style={{ left: menu.x + 4, top: menu.y + 4 }} onClick={(e)=> e.stopPropagation()}>
-          <button className="context-item" onClick={() => { setEditingActivityId(menu.event!.id); closeMenu() }}>활동 수정</button>
-          <button className="context-item" onClick={() => { closeMenu(); void handleDeleteActivity(menu.event!) }}>활동 삭제</button>
-        </div>
-      )}
+            <button className="context-item" onClick={() => { if (menu.date) { openCreateAt(menu.date); closeMenu() } }} disabled={!menu.date}>활동 등록</button>
+            <button
+              className="context-item"
+              onClick={() => { if (menu.event) { setEditingActivityId(menu.event.id); closeMenu() } }}
+              disabled={!menu.event}
+              style={!menu.event ? { opacity: 0.35, cursor: 'not-allowed' } : undefined}
+            >활동 수정</button>
+            <button
+              className="context-item"
+              onClick={() => { if (menu.event) { closeMenu(); void handleDeleteActivity(menu.event) } }}
+              disabled={!menu.event}
+              style={!menu.event ? { opacity: 0.35, cursor: 'not-allowed' } : undefined}
+            >활동 삭제</button>
+          </div>
+        )}
       </div>
     </section>
     {editingActivityId && (
@@ -516,7 +694,79 @@ export function CalendarView() {
           </div>
         </div>
       )}
-      {deleteConfirm.open && (
+    {createInitial && (
+      <div
+        role="dialog"
+        aria-modal="true"
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'rgba(0,0,0,.4)'
+        }}
+        onClick={() => setCreateInitial(null)}
+      >
+        <div
+          className="card"
+          style={{
+            width: 'min(920px, 92vw)',
+            maxHeight: '90vh',
+            overflow: 'auto',
+            padding: 16,
+            background: 'var(--panel)',
+            border: '1px solid var(--border)',
+            borderRadius: 12,
+            boxShadow: '0 8px 32px rgba(0,0,0,.2)'
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>영업활동 등록</h3>
+            <button
+              onClick={() => setCreateInitial(null)}
+              style={{
+                width: 32,
+                height: 32,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'transparent',
+                border: 'none',
+                borderRadius: 4,
+                cursor: 'pointer',
+                color: 'var(--muted)',
+                fontSize: 20,
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--panel-2)'
+                e.currentTarget.style.color = 'var(--text)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent'
+                e.currentTarget.style.color = 'var(--muted)'
+              }}
+              title="닫기 (ESC)"
+            >
+              ×
+            </button>
+          </div>
+          <SalesActivityForm
+            bare
+            initial={createInitial}
+            onSaved={() => {
+              setCreateInitial(null)
+              setRefreshKey((prev) => prev + 1)
+            }}
+            onNoticeClose={() => setCreateInitial(null)}
+          />
+        </div>
+      </div>
+    )}
+    {deleteConfirm.open && (
         <div
           role="dialog"
           aria-modal="true"
@@ -593,6 +843,3 @@ export function CalendarView() {
     </>
   )
 }
-
-// Auto-scroll timelines to 07:00 on view/day changes
-// We place it outside return to respect hooks rules; but must be inside component.

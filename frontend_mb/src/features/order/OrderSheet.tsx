@@ -1,8 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import plusIcon from '../../assets/icons/plus.svg'
-import warehouseIcon from '../../assets/icons/warehouse.svg'
-import chevronLeft from '../../assets/icons/chevron-left.svg'
-import chevronRight from '../../assets/icons/chevron-right.svg'
+import { Plus, Warehouse, ChevronLeft, ChevronRight } from 'lucide-react'
 
 type Row = {
   customerId?: string
@@ -355,7 +352,7 @@ export function OrderSheet() {
                   onClick={() => setCustOpen(v => !v)}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCustOpen(v => !v) } }}
                 >
-                  <img src={custOpen ? chevronLeft : chevronRight} className="icon" alt="toggle" />
+                  {custOpen ? <ChevronLeft className="icon" size={20} /> : <ChevronRight className="icon" size={20} />}
                 </span>
               </th>
             </tr>
@@ -446,10 +443,10 @@ export function OrderSheet() {
                     aria-label="재고 조회"
                     title="재고 조회"
                     onClick={(e) => showAvail(e, it as any)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showAvail(({ currentTarget: e.currentTarget } as any) as React.MouseEvent, it as any) } }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const fakeEvent = { currentTarget: e.currentTarget } as React.MouseEvent<HTMLSpanElement, MouseEvent>; showAvail(fakeEvent, it as any) } }}
                     style={{ marginRight: 1, width: 32, height: 32 }}
                   >
-                    <img src={warehouseIcon} className="icon" alt="재고" style={{ width: 18, height: 18 }} />
+                    <Warehouse className="icon" size={18} />
                   </span>
                   <span
                     role="button"
@@ -461,7 +458,7 @@ export function OrderSheet() {
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); addToCart(it) } }}
                     style={{ width: 32, height: 32 }}
                   >
-                    <img src={plusIcon} className="icon" alt="담기" style={{ width: 18, height: 18 }} />
+                    <Plus className="icon" size={18} />
                   </span>
                 </td>
               </tr>
@@ -530,9 +527,9 @@ export function OrderSheet() {
                       aria-label="재고 조회"
                       title="재고 조회"
                       onClick={(e) => showAvailFromSummary(e, it.itemName)}
-                      onKeyDown={(e) => { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); showAvailFromSummary(e, it.itemName) } }}
+                      onKeyDown={(e) => { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); const fakeEvent = { currentTarget: e.currentTarget } as React.MouseEvent<HTMLSpanElement, MouseEvent>; showAvailFromSummary(fakeEvent, it.itemName) } }}
                     >
-                      <img src={warehouseIcon} className="icon" alt="재고" />
+                      <Warehouse className="icon" size={18} />
                     </span>
                     <span
                       role="button"
@@ -543,7 +540,7 @@ export function OrderSheet() {
                       onClick={() => addToCartFromSummary(it.itemName)}
                       onKeyDown={(e) => { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); addToCartFromSummary(it.itemName) } }}
                     >
-                      <img src={plusIcon} className="icon" alt="담기" />
+                      <Plus className="icon" size={18} />
                     </span>
                   </td>
                 </tr>

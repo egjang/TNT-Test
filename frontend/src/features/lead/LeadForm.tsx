@@ -262,7 +262,7 @@ export function LeadForm() {
       <div className="card" style={{ padding: 12 }}>
         {form && form.id != null ? (
           <>
-          <div className="form-grid" style={{ columnGap: 10, rowGap: 6 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 10, rowGap: 6 }}>
             <div className="field inline-field"><label>상태</label>
               <select className="search-input" value={form.lead_status || ''} onChange={(e) => update('lead_status', e.target.value)}>
                 <option value="">(선택)</option>
@@ -300,29 +300,29 @@ export function LeadForm() {
             </div>
             <div className="field inline-field"><label>사업자번호</label><input className="search-input" type="text" value={form.biz_no || ''} onChange={(e) => update('biz_no', e.target.value)} /></div>
             <div className="field inline-field"><label>지역(도/광역)</label><input className="search-input" type="text" value={form.addr_province_name || ''} onChange={(e) => update('addr_province_name', e.target.value)} /></div>
-            <div className="field inline-field row-2"><label>주소</label><input className="search-input" type="text" value={form.address || ''} onChange={(e) => update('address', e.target.value)} /></div>
+            <div className="field inline-field" style={{ gridColumn: '1 / -1' }}><label>주소</label><input className="search-input" type="text" value={form.address || ''} onChange={(e) => update('address', e.target.value)} /></div>
             <div className="field inline-field"><label>팩스</label><input className="search-input" type="text" value={form.fax_no || ''} onChange={(e) => update('fax_no', e.target.value)} /></div>
-            <div className="field inline-field row-2"><label>비고</label><textarea className="search-input" value={form.note || ''} onChange={(e) => update('note', e.target.value)} style={{ minHeight: 80 }} /></div>
+            <div className="field inline-field" style={{ gridColumn: '1 / -1' }}><label>비고</label><textarea className="search-input" value={form.note || ''} onChange={(e) => update('note', e.target.value)} style={{ minHeight: 80 }} /></div>
             <div className="field inline-field"><label>소유자</label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'center' }}>
-                <select className="search-input" value={form.assignee_id || ''} onChange={(e)=> update('assignee_id', e.target.value || null)}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <select className="search-input" value={form.assignee_id || ''} onChange={(e)=> update('assignee_id', e.target.value || null)} style={{ flex: 1 }}>
                   <option value="">(선택)</option>
                   {owners.map(o => (
                     <option key={o.assignee_id} value={o.assignee_id}>{o.dept_name} · {o.emp_name}</option>
                   ))}
                 </select>
-                <div style={{ whiteSpace: 'nowrap', alignSelf: 'center', fontSize: 12 }}>
+                <div style={{ whiteSpace: 'nowrap', fontSize: 11, color: 'var(--muted)' }}>
                   {(() => {
                     const byName = form.owner_name && String(form.owner_name).trim() ? String(form.owner_name) : ''
                     const a = form.assignee_id || ''
                     const found = owners.find(o => o.assignee_id === a)
                     const name = byName || (found ? found.emp_name : '') || '-'
-                    return `현재소유자 : ${name}`
+                    return `현재: ${name}`
                   })()}
                 </div>
               </div>
             </div>
-            <div className="field inline-four row-2">
+            <div className="field inline-four" style={{ gridColumn: '1 / -1' }}>
               <label>작성자</label>
               <div className="subject-input" style={{ padding: '6px 8px' }}>
                 {(form.created_by_name || (form.created_by ?? '') || loginAssigneeId || loginEmpId)}
@@ -462,7 +462,7 @@ export function LeadForm() {
                 <img src={closeIcon} className="icon" alt="닫기" />
               </span>
             </div>
-            <div className="form-grid" style={{ columnGap: 10, rowGap: 6 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 10, rowGap: 6 }}>
               <div className="field inline-field"><label>상태</label>
                 <select className="search-input" value={newForm.lead_status || ''} onChange={(e) => setNewForm(prev => ({ ...prev, lead_status: e.target.value }))}>
                   <option value="">(선택)</option>
@@ -500,9 +500,8 @@ export function LeadForm() {
               </div>
               <div className="field inline-field"><label>사업자번호</label><input className="search-input" type="text" value={newForm.biz_no || ''} onChange={(e) => setNewForm(prev => ({ ...prev, biz_no: e.target.value }))} /></div>
               <div className="field inline-field"><label>지역(도/광역)</label><input className="search-input" type="text" value={newForm.addr_province_name || ''} onChange={(e) => setNewForm(prev => ({ ...prev, addr_province_name: e.target.value }))} /></div>
-              <div className="field inline-field row-2"><label>주소</label><input className="search-input" type="text" value={newForm.address || ''} onChange={(e) => setNewForm(prev => ({ ...prev, address: e.target.value }))} /></div>
+              <div className="field inline-field" style={{ gridColumn: '1 / -1' }}><label>주소</label><input className="search-input" type="text" value={newForm.address || ''} onChange={(e) => setNewForm(prev => ({ ...prev, address: e.target.value }))} /></div>
               <div className="field inline-field"><label>팩스</label><input className="search-input" type="text" value={newForm.fax_no || ''} onChange={(e) => setNewForm(prev => ({ ...prev, fax_no: e.target.value }))} /></div>
-              <div className="field inline-field row-2"><label>비고</label><textarea className="search-input" value={newForm.note || ''} onChange={(e) => setNewForm(prev => ({ ...prev, note: e.target.value }))} style={{ minHeight: 80 }} /></div>
               <div className="field inline-field"><label>소유자</label>
                 <select className="search-input" value={newForm.assignee_id || ''} onChange={(e)=> setNewForm(prev => ({ ...prev, assignee_id: e.target.value || null }))}>
                   <option value="">(선택)</option>
@@ -511,9 +510,12 @@ export function LeadForm() {
                   ))}
                 </select>
               </div>
+              <div className="field inline-field" style={{ gridColumn: '1 / -1' }}><label>비고</label><textarea className="search-input" value={newForm.note || ''} onChange={(e) => setNewForm(prev => ({ ...prev, note: e.target.value }))} style={{ minHeight: 80 }} /></div>
             </div>
-            <div className="controls" style={{ justifyContent: 'flex-end', marginTop: 10, gap: 8 }}>
-              <button className="btn" onClick={() => setNewOpen(false)}>취소</button>
+            <div className="controls" style={{ justifyContent: 'space-between', marginTop: 10, gap: 8 }}>
+              <div aria-live="polite" style={{ fontSize: 12, color: '#ef4444' }}>{saveMsg || ''}</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn" onClick={() => { setNewOpen(false); setSaveMsg(null) }}>취소</button>
               <button className="btn" onClick={async () => {
                 try {
                   const payload = { ...newForm }
@@ -523,6 +525,7 @@ export function LeadForm() {
                   const d = await r.json().catch(()=> ({} as any))
                   if (!r.ok || (d && d.error)) throw new Error(d?.error || `HTTP ${r.status}`)
                   const id = d?.id
+                  if (!id || id === -1) throw new Error('저장 실패: ID를 받지 못했습니다')
                   const created = { ...(newForm || {}), id }
                   try {
                     localStorage.setItem('tnt.sales.selectedLead', JSON.stringify(created))
@@ -530,12 +533,14 @@ export function LeadForm() {
                     window.dispatchEvent(new CustomEvent('tnt.sales.lead.updated', { detail: { lead: created } }) as any)
                   } catch {}
                   setNewOpen(false)
+                  setNewForm({})
                   const cname = newForm.company_name || ''
                   setNotice({ open: true, text: `${cname} 신규 생성되었습니다.` })
-                } catch (e) {
-                  // ignore for now or show inline error
+                } catch (e: any) {
+                  setSaveMsg(e?.message || '저장 중 오류가 발생했습니다')
                 }
               }}>저장</button>
+              </div>
             </div>
           </div>
         </div>

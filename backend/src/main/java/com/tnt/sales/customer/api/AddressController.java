@@ -60,8 +60,8 @@ public class AddressController {
         try {
             List<String> rows = jdbc.query(
                     "SELECT DISTINCT addr_district_name FROM public.address_area WHERE addr_province_name ILIKE ? AND addr_district_name IS NOT NULL AND addr_district_name <> '' ORDER BY addr_district_name",
-                    new Object[]{"%" + province.trim() + "%"},
-                    (rs, i) -> rs.getString(1)
+                    (rs, i) -> rs.getString(1),
+                    "%" + province.trim() + "%"
             );
             return ResponseEntity.ok(rows);
         } catch (Exception e) {

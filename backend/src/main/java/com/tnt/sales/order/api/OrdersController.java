@@ -208,7 +208,7 @@ public class OrdersController {
 
             Map<?,?> body = resp.getBody();
             Map<String,Object> result = new LinkedHashMap<>();
-            result.put("status", resp.getStatusCodeValue());
+            result.put("status", resp.getStatusCode().value());
             result.put("ok", resp.getStatusCode().is2xxSuccessful());
             result.put("url", apiUrl);
             result.put("sendPayload", payload);

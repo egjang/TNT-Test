@@ -36,8 +36,8 @@ public class SupplierController {
                         "  SELECT DISTINCT supplier_name FROM public.supplier " +
                         "  WHERE item_subcategory = ? AND supplier_name IS NOT NULL" +
                         ") s ORDER BY CASE WHEN supplier_name ILIKE 'TNT' THEN 0 ELSE 1 END, supplier_name ASC",
-                new Object[]{sub},
-                (rs, i) -> rs.getString(1)
+                (rs, i) -> rs.getString(1),
+                sub
         );
         return ResponseEntity.ok(rows);
     }
@@ -47,8 +47,9 @@ public class SupplierController {
                                             @RequestParam("supplier") String supplier) {
         List<String> rows = jdbc.query(
                 "SELECT DISTINCT sales_mgmt_unit FROM public.supplier WHERE item_subcategory = ? AND supplier_name = ? AND sales_mgmt_unit IS NOT NULL ORDER BY 1",
-                new Object[]{subcategory, supplier},
-                (rs, i) -> rs.getString(1)
+                (rs, i) -> rs.getString(1),
+                subcategory,
+                supplier
         );
         return ResponseEntity.ok(rows);
     }

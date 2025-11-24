@@ -73,7 +73,7 @@ public class LeadStatsController {
                 params.add(endDate + " 00:00:00");
 
                 log.info("Executing registration query - SQL: {}, Params: {}", sql, params);
-                Integer count = jdbc.queryForObject(sql, params.toArray(), Integer.class);
+                Integer count = jdbc.queryForObject(sql, Integer.class, params.toArray());
                 log.info("Query result for {}: {}", label, count);
 
                 Map<String, Object> item = new HashMap<>();
@@ -253,7 +253,7 @@ public class LeadStatsController {
                 params.add(endDate + " 00:00:00");
 
                 log.info("Executing activity query - SQL: {}, Params: {}", sql, params);
-                Integer count = jdbc.queryForObject(sql, params.toArray(), Integer.class);
+                Integer count = jdbc.queryForObject(sql, Integer.class, params.toArray());
                 log.info("Query result for {}: {}", label, count);
 
                 Map<String, Object> item = new HashMap<>();

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { SubjectInput } from '../../components/SubjectInput'
+import { Check } from 'lucide-react'
 
 
 type Resp = { id?: number; error?: string }
@@ -73,22 +74,19 @@ export function SalesActivityForm({ bare = false, initial, editId, leadId, onSav
   const [error, setError] = useState<string | null>(null) // legacy (not rendered)
   const [notice, setNotice] = useState<{ open:boolean; text:string }>(()=>({ open:false, text:'' }))
   const [errorPopup, setErrorPopup] = useState<string | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [savedAt, setSavedAt] = useState<Date | null>(new Date())
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerQ, setPickerQ] = useState('')
+  const [pickerLoading, setPickerLoading] = useState(false)
+  const [pickerError, setPickerError] = useState<string | null>(null)
+  const [pickerItems, setPickerItems] = useState<Array<{ customerId?: string; customerName?: string; companyType?: string; ownerName?: string }>>([])
   const lastInitialSource = React.useRef<string | number | null>(null)
   const currentInitial = detailInitial ?? initial
   const initSource = currentInitial?.id ?? editId ?? (planMode ? 'plan' : 'new')
 
   const loggedEmpId = useMemo(() => localStorage.getItem('tnt.sales.empId'), [])
   const loggedAssigneeId = useMemo(() => localStorage.getItem('tnt.sales.assigneeId'), [])
-
-  useMemo(() => {
-    try {
-      const raw = localStorage.getItem('tnt.sales.selectedCustomer')
-      if (raw) setSelectedCustomer(JSON.parse(raw))
-    } catch {
-      setSelectedCustomer(null)
-    }
-  }, [])
 
   // Load candidate parent activities (same account + my activities, only root)
   const loadParentOptions = React.useCallback(async () => {
@@ -243,6 +241,7 @@ export function SalesActivityForm({ bare = false, initial, editId, leadId, onSav
     setParentActivitySeq(init.parentActivitySeq != null ? String(init.parentActivitySeq) : '')
     if ((init.sfAccountId && String(init.sfAccountId)) || (init as any).customerName) {
       setOverrideAccount({ id: (init.sfAccountId ? String(init.sfAccountId) : undefined), name: ((init as any).customerName ? String((init as any).customerName) : undefined) })
+      setSelectedCustomer({ customerId: init.sfAccountId ? String(init.sfAccountId) : undefined, customerName: (init as any).customerName })
     } else {
       setOverrideAccount(null)
     }
@@ -325,6 +324,55 @@ export function SalesActivityForm({ bare = false, initial, editId, leadId, onSav
     return () => { ignore = true }
   }, [editId])
   const parentLocked = !!(editId && hasChildren)
+
+  // Customer picker
+  const loadPicker = React.useCallback(async () => {
+    setPickerError(null)
+    setPickerLoading(true)
+    try {
+      const url = new URL('/api/v1/customers', window.location.origin)
+      if (pickerQ.trim()) url.searchParams.set('name', pickerQ.trim())
+      url.searchParams.set('mineOnly', 'false')
+      url.searchParams.set('limit', '50')
+      const res = await fetch(url.toString())
+      if (!res.ok) {
+        let msg = `HTTP ${res.status}`
+        try { const d = await res.json(); if (d?.error) msg = d.error } catch {}
+        throw new Error(msg)
+      }
+      const data = await res.json()
+      const arr = Array.isArray(data) ? data : []
+      setPickerItems(arr.map((x: any) => ({
+        customerId: x?.customerId ?? x?.customer_id,
+        customerName: x?.customerName ?? x?.customer_name,
+        companyType: x?.companyType ?? x?.company_type,
+        ownerName: x?.ownerName ?? x?.owner_name,
+      })))
+    } catch (e: any) {
+      setPickerError(e?.message || '조회 중 오류가 발생했습니다')
+      setPickerItems([])
+    } finally {
+      setPickerLoading(false)
+    }
+  }, [pickerQ])
+
+  React.useEffect(() => {
+    if (!pickerOpen) return
+    loadPicker()
+  }, [pickerOpen, loadPicker])
+
+  React.useEffect(() => {
+    if (!pickerOpen) return
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        setPickerOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onEsc, true)
+    return () => window.removeEventListener('keydown', onEsc, true)
+  }, [pickerOpen])
 
   async function submit() {
     setError(null)
@@ -487,6 +535,10 @@ export function SalesActivityForm({ bare = false, initial, editId, leadId, onSav
             ? (displayName ? `${displayName} (활동계획)` : (subject || undefined))
             : (subject || undefined)
           const nowIso = new Date().toISOString()
+          const effectiveAccountId =
+            overrideAccount?.id
+            ?? (selectedCustomer?.customerId ? String(selectedCustomer.customerId) : undefined)
+            ?? (sfAccountId || undefined)
           const body = {
             sfOwnerId: ownerId,
             subject: effectiveSubject,
@@ -504,7 +556,7 @@ export function SalesActivityForm({ bare = false, initial, editId, leadId, onSav
             parentActivitySeq: parentActivitySeq ? Number(parentActivitySeq) : undefined,
             // Lead use-case: link by sfLeadId; otherwise link by customer_id (거래처번호)
             sfLeadId: leadId ? String(leadId) : undefined,
-            sfAccountId: leadId ? undefined : ((overrideAccount?.id ?? (selectedCustomer?.customerId ? String(selectedCustomer.customerId) : sfAccountId)) || undefined),
+            sfAccountId: leadId ? undefined : (effectiveAccountId || undefined),
             sfContactId: sfContactId || undefined,
             sfOpportunityId: sfOpportunityId || undefined,
             createdBy: loggedEmpId,
@@ -544,6 +596,33 @@ export function SalesActivityForm({ bare = false, initial, editId, leadId, onSav
     }
   }
 
+  const handleDelete = async () => {
+    if (!editId) return
+    setDeleteConfirm(false)
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/v1/sales-activities/${editId}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `HTTP ${res.status}`)
+      }
+      setNotice({ open: true, text: '삭제되었습니다.' })
+      try {
+        window.dispatchEvent(new CustomEvent('tnt.sales.activity.updated', { detail: { id: editId } }))
+      } catch {}
+      try { if (onSaved) onSaved(undefined) } catch {}
+    } catch (e: any) {
+      const errMsg = e.message || '삭제 중 오류가 발생했습니다'
+      setError(errMsg)
+      setErrorPopup(errMsg)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <section>
       {!bare && (
@@ -561,18 +640,18 @@ export function SalesActivityForm({ bare = false, initial, editId, leadId, onSav
       <section className={bare ? undefined : (planMode ? 'card plan-compact-card' : 'card')}>
         <div
           className={planMode ? 'plan-compact' : 'form-grid'}
-          style={planMode ? { display: 'flex', flexDirection: 'column', gap: 6 } : undefined}
+          style={planMode ? { display: 'flex', flexDirection: 'column', gap: 6 } : { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px' }}
         >
           {/** Row layout helper for label+control */}
           {/** Each field below uses a 2-column grid: 120px label + flexible control */}
-          <div className="field row-2" style={{ display:'grid', gridTemplateColumns: planMode ? '90px 260px' : '120px 1fr', gap: planMode ? 6 : 8, alignItems:'center' }}>
+          <div className="field" style={{ display:'grid', gridTemplateColumns: planMode ? '90px 260px' : '120px 1fr', gap: planMode ? 6 : 8, alignItems:'center', gridColumn: '1 / -1' }}>
             <label>제목</label>
             <SubjectInput value={subject} onChange={lockSubject ? undefined : setSubject} placeholder="예: 고객사 주간 미팅" readOnly={!!lockSubject} />
           </div>
           {!planMode && (
-            <div className="field row-2" style={{ display:'grid', gridTemplateColumns:'120px 1fr', gap:8, alignItems:'center' }}>
-              <label>활동 설명</label>
-              <textarea value={description} onChange={e=>setDescription(e.target.value)} rows={4} />
+            <div className="field" style={{ display:'grid', gridTemplateColumns:'120px 1fr', gap:8, alignItems:'start', gridColumn: '1 / -1' }}>
+              <label style={{ paddingTop: 8 }}>활동 설명</label>
+              <textarea value={description} onChange={e=>setDescription(e.target.value)} placeholder="활동 설명 입력" rows={3} />
             </div>
           )}
           <div className="field" style={{ display:'grid', gridTemplateColumns: planMode ? '90px 260px' : '120px 1fr', gap: planMode ? 6 : 8, alignItems:'center' }}>
@@ -703,59 +782,79 @@ export function SalesActivityForm({ bare = false, initial, editId, leadId, onSav
               </div>
             </>
           )}
-          {!planMode && (
-            <div className="field" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-              <label className="muted" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <input className="checkbox-accent" type="checkbox" checked={isAllDay} onChange={e=>setIsAllDay(e.target.checked)} />
-                <span>종일</span>
-              </label>
-              <label className="muted" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <input className="checkbox-accent" type="checkbox" checked={isPrivate} onChange={e=>setIsPrivate(e.target.checked)} />
-                <span>비공개</span>
-              </label>
-            </div>
-          )}
           {!planMode && !leadId && (
             <>
-              <div className="field" style={{ display:'grid', gridTemplateColumns:'120px 1fr', gap:8, alignItems:'center' }}>
+              <div className="field" style={{ display:'grid', gridTemplateColumns:'120px 1fr', gap:8, alignItems:'center', gridColumn: '1 / -1' }}>
                 <label>거래처</label>
-                <SubjectInput
-                  value={
-                    overrideAccount
-                      ? (overrideAccount.name || overrideAccount.id || '')
-                    : (selectedCustomer ? (selectedCustomer.customerName || String(selectedCustomer.customerId || '')) : (sfAccountId || ''))
-                    }
-                  onChange={overrideAccount ? undefined : (selectedCustomer ? undefined : setSfAccountId)}
-                  placeholder="거래처명 또는 ID"
-                  readOnly={!!overrideAccount || !!selectedCustomer}
-                />
-              </div>
-              <div className="field" style={{ display:'grid', gridTemplateColumns:'120px 1fr', gap:8, alignItems:'center' }}>
-                <label>거래처 담당자</label>
-                <input type="text" value="기능 미구현" readOnly disabled />
-              </div>
-              <div className="field" style={{ display:'grid', gridTemplateColumns:'120px 1fr', gap:8, alignItems:'center' }}>
-                <label>영업기회</label>
-                <input type="text" value="기능 미구현" readOnly disabled />
+                <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                  <SubjectInput
+                    value={
+                      overrideAccount
+                        ? (overrideAccount.name || overrideAccount.id || '')
+                      : (selectedCustomer ? (selectedCustomer.customerName || String(selectedCustomer.customerId || '')) : (sfAccountId || ''))
+                      }
+                    onChange={overrideAccount ? undefined : (selectedCustomer ? undefined : setSfAccountId)}
+                    placeholder="거래처명 또는 ID"
+                    readOnly={!!overrideAccount || !!selectedCustomer || !!editId}
+                    style={{ flex:'1 1 auto' }}
+                  />
+                  {!editId && (
+                    <button
+                      className="btn secondary"
+                      style={{ height:30, padding:'0 10px' }}
+                      onClick={() => {
+                        setPickerOpen(true)
+                      }}
+                      title="거래처 검색"
+                    >
+                      🔍
+                    </button>
+                  )}
+                </div>
               </div>
             </>
           )}
           {!planMode && (
-            <div className="field" style={{ display:'grid', gridTemplateColumns:'120px 1fr', gap:8, alignItems:'center' }}>
-              <label>가시성</label>
-              <select value={visibility} onChange={e=>setVisibility(e.target.value)}>
-                {visibilities.map(v=> <option key={v} value={v}>{v}</option>)}
-              </select>
-            </div>
+            <>
+              <div className="field" style={{ display:'grid', gridTemplateColumns:'120px 1fr', gap:8, alignItems:'center' }}>
+                <label>종일 / 비공개</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <label className="muted" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <input className="checkbox-accent" type="checkbox" checked={isAllDay} onChange={e=>setIsAllDay(e.target.checked)} />
+                    <span>종일</span>
+                  </label>
+                  <label className="muted" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <input className="checkbox-accent" type="checkbox" checked={isPrivate} onChange={e=>setIsPrivate(e.target.checked)} />
+                    <span>비공개</span>
+                  </label>
+                </div>
+              </div>
+              <div className="field" style={{ display:'grid', gridTemplateColumns:'120px 1fr', gap:8, alignItems:'center' }}>
+                <label>가시성</label>
+                <select value={visibility} onChange={e=>setVisibility(e.target.value)}>
+                  {visibilities.map(v=> <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+            </>
           )}
         </div>
         {error && (
           <div className="error" style={{ marginBottom: 8 }}>{error}</div>
         )}
-        <div className="controls">
+        <div className="controls" style={{ display: 'flex', gap: 8 }}>
           <button className="btn" onClick={submit} disabled={busy || !loggedEmpId}>
             {busy ? (editId ? '수정 중…' : '저장 중…') : (editId ? '수정' : '저장')}
           </button>
+          {editId && (
+            <button
+              className="btn"
+              onClick={() => setDeleteConfirm(true)}
+              disabled={busy}
+              style={{ background: '#dc2626', borderColor: '#dc2626' }}
+            >
+              삭제
+            </button>
+          )}
         </div>
       </section>
       {notice.open ? (
@@ -780,7 +879,171 @@ export function SalesActivityForm({ bare = false, initial, editId, leadId, onSav
         </div>
       ) : null}
 
-      
+      {deleteConfirm ? (
+        <div role="dialog" aria-modal="true" className="card" style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex: 70 }}>
+          <div className="card" style={{ background:'var(--panel)', padding: 12, border: '1px solid var(--border)', borderRadius: 10, minWidth: 260, maxWidth: '86vw' }}>
+            <div style={{ marginBottom: 8, fontWeight: 700, textAlign:'center' }}>이 활동을 삭제하시겠습니까?</div>
+            <div style={{ marginBottom: 12, fontSize: 13, textAlign:'center', color: '#6b7280' }}>삭제된 데이터는 복구할 수 없습니다.</div>
+            <div style={{ display:'flex', justifyContent:'center', gap: 8 }}>
+              <button className="btn btn-card btn-3d" onClick={() => setDeleteConfirm(false)} style={{ background: '#6b7280', borderColor: '#6b7280' }}>취소</button>
+              <button className="btn btn-card btn-3d" onClick={handleDelete} style={{ background: '#dc2626', borderColor: '#dc2626' }}>삭제</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {pickerOpen && !editId ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex: 80 }}
+          onClick={() => setPickerOpen(false)}
+        >
+          <div
+            className="card"
+            style={{ background:'var(--panel)', padding: 16, border: '1px solid var(--border)', borderRadius: 12, boxShadow:'0 8px 32px rgba(0,0,0,.2)', width:'min(720px, 92vw)', maxHeight:'80vh', overflow:'auto' }}
+            onClick={(e)=> e.stopPropagation()}
+          >
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: 12 }}>
+              <h3 style={{ margin:0, fontSize:16, fontWeight:700 }}>거래처 선택</h3>
+              <button
+                onClick={() => setPickerOpen(false)}
+                style={{
+                  width: 32,
+                  height: 32,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  color: 'var(--muted)',
+                  fontSize: 20,
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--panel-2)'
+                  e.currentTarget.style.color = 'var(--text)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent'
+                  e.currentTarget.style.color = 'var(--muted)'
+                }}
+                title="닫기 (ESC)"
+                aria-label="닫기"
+              >
+                ×
+              </button>
+            </div>
+            <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8 }}>
+              <input
+                className="search-input"
+                value={pickerQ}
+                onChange={(e)=> setPickerQ(e.target.value)}
+                onKeyDown={(e)=> { if (e.key === 'Enter') loadPicker() }}
+                placeholder="거래처명"
+                style={{ flex:'1 1 auto', background:'#fff', border:'1px solid var(--border)' }}
+              />
+              <button className="btn" style={{ height:30, padding:'0 12px' }} onClick={loadPicker} disabled={pickerLoading}>
+                {pickerLoading ? '조회중...' : '조회'}
+              </button>
+            </div>
+            {pickerError && <div className="error" style={{ marginBottom:8 }}>{pickerError}</div>}
+            <div className="table-container" style={{ maxHeight: '50vh' }}>
+              {pickerItems.length === 0 && !pickerLoading ? (
+                <div className="empty-state">검색 결과가 없습니다.</div>
+              ) : (
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 60, textAlign: 'center' }}>구분</th>
+                      <th>거래처명</th>
+                      <th style={{ width: 140 }}>대표자명</th>
+                      <th style={{ width: 60, textAlign: 'center' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pickerItems.map((c, idx) => {
+                      const companyType = (c.companyType || '').toString().trim().toUpperCase()
+                      const isTNT = companyType.includes('TNT')
+                      const isDYS = companyType.includes('DYS')
+                      const iconLabel = isTNT ? 'T' : isDYS ? 'D' : (c.companyType || '거')[0]
+                      const iconBg = isTNT ? '#1d4ed8' : isDYS ? '#059669' : '#6b7280'
+
+                      return (
+                        <tr key={idx}>
+                          <td style={{ textAlign: 'center' }}>
+                            <span
+                              title={c.companyType || ''}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                width: 24,
+                                height: 24,
+                                borderRadius: '50%',
+                                background: iconBg,
+                                color: '#fff',
+                                fontSize: 12,
+                                fontWeight: 700
+                              }}
+                            >
+                              {iconLabel}
+                            </span>
+                          </td>
+                          <td>{c.customerName || ''}</td>
+                          <td>{c.ownerName || ''}</td>
+                          <td style={{ textAlign: 'center' }}>
+                            <button
+                              style={{
+                                width: 32,
+                                height: 32,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                background: 'transparent',
+                                border: '1px solid var(--border)',
+                                borderRadius: 6,
+                                cursor: 'pointer',
+                                color: 'var(--text)',
+                                transition: 'all 0.2s'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = 'var(--accent)'
+                                e.currentTarget.style.borderColor = 'var(--accent)'
+                                e.currentTarget.style.color = '#fff'
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = 'transparent'
+                                e.currentTarget.style.borderColor = 'var(--border)'
+                                e.currentTarget.style.color = 'var(--text)'
+                              }}
+                              onClick={() => {
+                                const idVal = c.customerId ? String(c.customerId) : ''
+                                setOverrideAccount({ id: idVal, name: c.customerName || '' })
+                                setSelectedCustomer({ customerId: idVal, customerName: c.customerName })
+                                setSfAccountId(idVal)
+                                setPickerOpen(false)
+                              }}
+                              title="선택"
+                              aria-label="선택"
+                            >
+                              <Check size={18} />
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+
     </section>
   )
 }

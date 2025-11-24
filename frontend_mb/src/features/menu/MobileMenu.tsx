@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-export function MobileMenu({ onNavigate }: { onNavigate: (page: 'order' | 'activity' | 'activity-mgmt' | 'weekly-schedule' | 'inventory') => void }) {
+export function MobileMenu({ onNavigate }: { onNavigate: (page: 'order' | 'activity' | 'activity-mgmt' | 'weekly-schedule') => void }) {
   const [empName] = useState(() => {
     try { return localStorage.getItem('tnt.sales.empName') || '사용자' } catch { return '사용자' }
   })

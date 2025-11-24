@@ -15,6 +15,9 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 
+import com.tnt.sales.inventory.InventoryService;
+import com.tnt.sales.inventory.LgExpiryStock;
+
 @RestController
 @RequestMapping("/api/v1/inventory")
 public class InventoryController {
@@ -30,6 +33,9 @@ public class InventoryController {
     @Autowired(required = false)
     @Qualifier("pgJdbcTemplate")
     JdbcTemplate pgJdbc;
+
+    @Autowired
+    com.tnt.sales.inventory.InventoryService inventoryService;
 
     // DEX 임계값 기본값
     private static final int DEFAULT_NEAR_EXPIRE_DAYS = 14;
@@ -49,8 +55,7 @@ public class InventoryController {
     public ResponseEntity<?> getStockAging(
             @RequestParam(value = "whSeq", required = false) String whSeq,
             @RequestParam(value = "itemName", required = false) String itemName,
-            @RequestParam(value = "asOfDate", required = false) String asOfDate
-    ) {
+            @RequestParam(value = "asOfDate", required = false) String asOfDate) {
         if (mssqlJdbc == null) {
             return ResponseEntity.ok(Collections.emptyList());
         }
@@ -103,8 +108,10 @@ public class InventoryController {
                 }
 
                 if (!itemSeqs.isEmpty()) {
-                    String itemSeqList = String.join(",", itemSeqs.stream().map(String::valueOf).toArray(String[]::new));
-                    String itemSql = "SELECT ItemSeq, ItemName, ItemNo, Spec FROM TNT.dbo._TDAItem WHERE ItemSeq IN (" + itemSeqList + ")";
+                    String itemSeqList = String.join(",",
+                            itemSeqs.stream().map(String::valueOf).toArray(String[]::new));
+                    String itemSql = "SELECT ItemSeq, ItemName, ItemNo, Spec FROM TNT.dbo._TDAItem WHERE ItemSeq IN ("
+                            + itemSeqList + ")";
                     List<Map<String, Object>> items = mssqlJdbc.queryForList(itemSql);
 
                     for (Map<String, Object> item : items) {
@@ -125,7 +132,8 @@ public class InventoryController {
                 BigDecimal qty = new BigDecimal(String.valueOf(row.get("StockQty")));
                 BigDecimal amt = new BigDecimal(String.valueOf(row.get("StockAmt")));
 
-                if (qty.compareTo(BigDecimal.ZERO) <= 0) continue;
+                if (qty.compareTo(BigDecimal.ZERO) <= 0)
+                    continue;
 
                 // Parse InOutDate (YYYYMMDD format)
                 LocalDate inOutDate;
@@ -208,7 +216,8 @@ public class InventoryController {
 
         } catch (Exception e) {
             log.warn("재고 aging 조회 실패: {}", e.getMessage());
-            // Return empty list instead of error for better UX (DB connection issues are common)
+            // Return empty list instead of error for better UX (DB connection issues are
+            // common)
             return ResponseEntity.ok(Collections.emptyList());
         }
     }
@@ -250,8 +259,7 @@ public class InventoryController {
             @RequestParam(value = "remainDayThreshold", required = false, defaultValue = "30") Integer remainDayThreshold,
             @RequestParam(value = "whSeq", required = false) String whSeq,
             @RequestParam(value = "itemName", required = false) String itemName,
-            @RequestParam(value = "category", required = false) String category
-    ) {
+            @RequestParam(value = "category", required = false) String category) {
         if (pgJdbc == null) {
             log.warn("pgJdbc is null - PostgreSQL datasource not configured");
             Map<String, Object> response = new HashMap<>();
@@ -354,9 +362,11 @@ public class InventoryController {
      * 유통기한재고(DEX) 조회 - Postgres lg_expiry_stock
      * 기본 정렬: 만료 우선 → 잔여일수 오름차순 → 최종출고이후미사용일수 내림차순 → 적재일시 내림차순
      * 모드:
-     *  - expired: exp_chk='expired' OR remain_day<=0
-     *  - near: remain_day<=DEFAULT_NEAR_EXPIRE_DAYS OR remain_rate<=DEFAULT_NEAR_EXPIRE_RATE
-     *  - idle: out_not_use_date>=DEFAULT_IDLE_DAYS OR in_not_use_date>=DEFAULT_IDLE_DAYS
+     * - expired: exp_chk='expired' OR remain_day<=0
+     * - near: remain_day<=DEFAULT_NEAR_EXPIRE_DAYS OR
+     * remain_rate<=DEFAULT_NEAR_EXPIRE_RATE
+     * - idle: out_not_use_date>=DEFAULT_IDLE_DAYS OR
+     * in_not_use_date>=DEFAULT_IDLE_DAYS
      */
     @GetMapping("/dex")
     public ResponseEntity<?> getExpiryInventoryDex(
@@ -481,7 +491,7 @@ public class InventoryController {
             String baseSelect = "SELECT id, src_std_date, src_bizunit, item_name, item_no, spec, item_seq, unit_name, exp_period, remain_day, remain_rate, exp_chk, exp_date, create_date, in_date, last_out_date, lot_no, wh_name, wh_seq, stock_qty, out_not_use_date, in_not_use_date, asset_seq, asset_name, item_category_seq, item_category, item_subcategory_seq, item_subcategory, item_small_category_seq, item_small_category, loaded_at FROM lg_expiry_stock";
 
             String countSql = "SELECT COUNT(*) FROM lg_expiry_stock " + where;
-            int totalCount = pgJdbc.queryForObject(countSql, params.toArray(), Integer.class);
+            int totalCount = pgJdbc.queryForObject(countSql, Integer.class, params.toArray());
 
             String dataSql = baseSelect + where.toString() + orderBy + " LIMIT ? OFFSET ? ";
             List<Object> dataParams = new ArrayList<>(params);
@@ -503,6 +513,63 @@ public class InventoryController {
         } catch (Exception e) {
             log.error("유통기한재고(DEX) 조회 실패", e);
             return ResponseEntity.status(500).body(Collections.singletonMap("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/expiry-stock-ag")
+    public ResponseEntity<?> getExpiryStockAG(
+            @RequestParam(required = false) String itemName,
+            @RequestParam(required = false) String whName,
+            @RequestParam(required = false) String expChk,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) Integer remainDayMax,
+            @RequestParam(required = false) Integer minStockQty,
+            @RequestParam(required = false) String sortOrder,
+            @RequestParam(value = "daysOffset", required = false, defaultValue = "0") Integer daysOffset,
+            @RequestParam(required = false) String bizUnit) {
+        try {
+            log.info("Requesting Expiry Stock AG with daysOffset: {}, bizUnit: {}", daysOffset, bizUnit);
+            List<LgExpiryStock> stocks = inventoryService.getExpiryStockAG(itemName, whName, expChk, category,
+                    remainDayMax, minStockQty, sortOrder, daysOffset, bizUnit);
+            return ResponseEntity.ok(stocks);
+        } catch (Exception e) {
+            log.error("Error fetching Expiry Stock AG", e);
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/warehouses-ag")
+    public ResponseEntity<?> getWarehousesAG() {
+        try {
+            List<String> warehouses = inventoryService.getUniqueWarehouses();
+            return ResponseEntity.ok(warehouses);
+        } catch (Exception e) {
+            log.error("Error fetching AG warehouses", e);
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/items-popup")
+    public ResponseEntity<?> searchItemsPopup(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String subcategory) {
+        try {
+            List<Map<String, Object>> items = inventoryService.searchItemsForPopup(keyword, subcategory);
+            return ResponseEntity.ok(items);
+        } catch (Exception e) {
+            log.error("Error searching items for popup", e);
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/subcategories-ag")
+    public ResponseEntity<?> getSubcategoriesAG() {
+        try {
+            List<String> subcategories = inventoryService.getUniqueSubcategories();
+            return ResponseEntity.ok(subcategories);
+        } catch (Exception e) {
+            log.error("Error fetching AG subcategories", e);
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 }

@@ -50,6 +50,95 @@ public class SalesActivityController {
     }
 
     /**
+     * Quarterly completed activity counts for a customer in the current year
+     * Returns: [{quarter: 1, count: 5}, {quarter: 2, count: 3}, ...]
+     */
+    @GetMapping("/quarterly-completed")
+    public ResponseEntity<?> quarterlyCompleted(
+            @RequestParam(value = "sfAccountId", required = false) String sfAccountId,
+            @RequestParam(value = "sfLeadId", required = false) String sfLeadId,
+            @RequestParam(value = "customerName", required = false) String customerName,
+            @RequestParam(value = "year", required = false) Integer year
+    ) {
+        // nodb profile: return stub data
+        for (String p : env.getActiveProfiles()) {
+            if ("nodb".equalsIgnoreCase(p)) {
+                return ResponseEntity.ok(List.of(
+                        Map.of("quarter", 1, "count", 3),
+                        Map.of("quarter", 2, "count", 5),
+                        Map.of("quarter", 3, "count", 2),
+                        Map.of("quarter", 4, "count", 4)
+                ));
+            }
+        }
+
+        if ((sfAccountId == null || sfAccountId.isBlank())
+            && (sfLeadId == null || sfLeadId.isBlank())
+            && (customerName == null || customerName.isBlank())) {
+            return ResponseEntity.badRequest().body(Map.of("error", "sfAccountId, sfLeadId, or customerName required"));
+        }
+
+        try {
+            // Default to current year if not specified
+            int targetYear = (year != null) ? year : java.time.Year.now().getValue();
+
+            StringBuilder sql = new StringBuilder(
+                    "WITH quarterly AS (" +
+                    "  SELECT EXTRACT(QUARTER FROM sa.planned_start_at) AS quarter, COUNT(*) AS count " +
+                    "  FROM public.sales_activity sa " +
+                    "  LEFT JOIN public.customer c ON (CAST(c.customer_id AS TEXT) = CAST(sa.sf_account_id AS TEXT) OR CAST(c.customer_seq AS TEXT) = CAST(sa.sf_account_id AS TEXT)) " +
+                    "  WHERE EXTRACT(YEAR FROM sa.planned_start_at) = ? " +
+                    "    AND (LOWER(sa.activity_status) IN ('completed', '완료')) "
+            );
+
+            List<Object> params = new ArrayList<>();
+            params.add(targetYear);
+
+            if (sfAccountId != null && !sfAccountId.isBlank()) {
+                sql.append(" AND sa.sf_account_id = ? ");
+                params.add(sfAccountId.trim());
+            }
+
+            if (sfLeadId != null && !sfLeadId.isBlank()) {
+                sql.append(" AND sa.sf_lead_id = ? ");
+                params.add(sfLeadId.trim());
+            }
+
+            if (customerName != null && !customerName.isBlank()) {
+                String[] toks = customerName.trim().split("[\\s,]+");
+                for (String t : toks) {
+                    if (t != null && !t.isBlank()) {
+                        sql.append(" AND c.customer_name ILIKE ? ");
+                        params.add("%" + t + "%");
+                    }
+                }
+            }
+
+            sql.append("  GROUP BY EXTRACT(QUARTER FROM sa.planned_start_at) " +
+                       ") " +
+                       "SELECT q.n AS quarter, COALESCE(qry.count, 0) AS count " +
+                       "FROM generate_series(1, 4) AS q(n) " +
+                       "LEFT JOIN quarterly qry ON qry.quarter = q.n " +
+                       "ORDER BY q.n");
+
+            List<Map<String, Object>> result = jdbc.query(sql.toString(), ps -> {
+                for (int idx = 0; idx < params.size(); idx++) {
+                    ps.setObject(idx + 1, params.get(idx));
+                }
+            }, (rs, i) -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("quarter", rs.getInt(1));
+                m.put("count", rs.getLong(2));
+                return m;
+            });
+
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("error", "quarterly_query_failed", "message", e.getMessage()));
+        }
+    }
+
+    /**
      * Weekly summary by employee (owner = assignee_id) for this week and next week.
      * - Filters employees by dept_name in (영업1본부, 영업1팀, 영업2본부, 영업2팀) unless `depts` is provided.
      * - plan = count(status='scheduled'), actual = count(status='completed')
@@ -146,7 +235,11 @@ public class SalesActivityController {
             args.add(offsetWeeks == null ? 0 : offsetWeeks.intValue());
             if (in != null) args.addAll(target);
 
-            java.util.List<java.util.Map<String,Object>> rows = jdbc.query(sql, args.toArray(), (rs, i) -> {
+            java.util.List<java.util.Map<String,Object>> rows = jdbc.query(sql, ps -> {
+                for (int idx = 0; idx < args.size(); idx++) {
+                    ps.setObject(idx + 1, args.get(idx));
+                }
+            }, (rs, i) -> {
                 java.util.Map<String,Object> m = new java.util.LinkedHashMap<>();
                 m.put("emp_id", rs.getString(1));
                 m.put("assignee_id", rs.getString(2));
@@ -206,7 +299,11 @@ public class SalesActivityController {
                         "  ORDER BY e.emp_name ASC";
                 java.util.List<Object> args = new java.util.ArrayList<>();
                 if (in != null) args.addAll(deptList);
-                java.util.List<java.util.Map<String,Object>> rows = jdbc.query(sql2, args.toArray(), (rs, i) -> {
+                java.util.List<java.util.Map<String,Object>> rows = jdbc.query(sql2, ps -> {
+                    for (int idx = 0; idx < args.size(); idx++) {
+                        ps.setObject(idx + 1, args.get(idx));
+                    }
+                }, (rs, i) -> {
                     java.util.Map<String,Object> m = new java.util.LinkedHashMap<>();
                     m.put("emp_id", rs.getString(1));
                     m.put("assignee_id", rs.getString(2));
@@ -499,7 +596,11 @@ public class SalesActivityController {
 
         sql.append(" ORDER BY COALESCE(sa.updated_at, sa.created_at) DESC, sa.id DESC LIMIT 200");
 
-        List<Map<String, Object>> rows = jdbc.query(sql.toString(), params.toArray(), (rs, i) -> {
+        List<Map<String, Object>> rows = jdbc.query(sql.toString(), ps -> {
+            for (int idx = 0; idx < params.size(); idx++) {
+                ps.setObject(idx + 1, params.get(idx));
+            }
+        }, (rs, i) -> {
             try {
                 return mapRow(rs);
             } catch (SQLException ex) {
@@ -523,14 +624,14 @@ public class SalesActivityController {
                             "LEFT JOIN public.sales_activity p ON p.id = sa.parent_activity_seq " +
                             "LEFT JOIN public.employee e ON CAST(e.assignee_id AS TEXT) = CAST(sa.sf_owner_id AS TEXT) " +
                             "WHERE sa.id = ?",
-                    new Object[]{id},
                     (rs, rowNum) -> {
                         try {
                             return mapRow(rs);
                         } catch (SQLException ex) {
                             throw new IllegalStateException(ex);
                         }
-                    }
+                    },
+                    id
             );
             return ResponseEntity.ok(detail);
         } catch (EmptyResultDataAccessException e) {

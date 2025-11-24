@@ -175,7 +175,7 @@ public class DemandUploadController {
             // Map emp_id -> emp_seq, then filter by sales_rep_id
             Long seq = null;
             try {
-                seq = jdbc.queryForObject("SELECT emp_seq FROM public.employee WHERE emp_id = ?", new Object[]{empId.trim()}, Long.class);
+                seq = jdbc.queryForObject("SELECT emp_seq FROM public.employee WHERE emp_id = ?", Long.class, empId.trim());
             } catch (Exception ignore) {}
             if (seq == null) {
                 return ResponseEntity.ok(java.util.List.of());
@@ -188,7 +188,11 @@ public class DemandUploadController {
         int lim = Math.max(1, Math.min(1000, limit));
         int off = Math.max(0, offset);
         sql.append(" ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST LIMIT ").append(lim).append(" OFFSET ").append(off);
-        var rows = jdbc.query(sql.toString(), params.toArray(), (rs, i) -> {
+        var rows = jdbc.query(sql.toString(), ps -> {
+            for (int idx = 0; idx < params.size(); idx++) {
+                ps.setObject(idx + 1, params.get(idx));
+            }
+        }, (rs, i) -> {
             java.util.Map<String,Object> m = new java.util.LinkedHashMap<>();
             m.put("salesRepName", rs.getString(1));
             m.put("customerId", rs.getString(2));
@@ -229,12 +233,12 @@ public class DemandUploadController {
             // Fill missing names from DB if possible
             if ((salesRepName == null || salesRepName.isEmpty()) && req.empSeq != null) {
                 try {
-                    salesRepName = jdbc.queryForObject("SELECT emp_name FROM public.employee WHERE emp_seq = ?", new Object[]{req.empSeq}, String.class);
+                    salesRepName = jdbc.queryForObject("SELECT emp_name FROM public.employee WHERE emp_seq = ?", String.class, req.empSeq);
                 } catch (Exception ignore) {}
             }
             if ((customerName == null || customerName.isEmpty()) && req.customerSeq != null) {
                 try {
-                    customerName = jdbc.queryForObject("SELECT customer_name FROM public.customer WHERE customer_seq = ?", new Object[]{req.customerSeq}, String.class);
+                    customerName = jdbc.queryForObject("SELECT customer_name FROM public.customer WHERE customer_seq = ?", String.class, req.customerSeq);
                 } catch (Exception ignore) {}
             }
             // Fallback: resolve emp name via customer → employee join
@@ -242,7 +246,7 @@ public class DemandUploadController {
                 try {
                     salesRepName = jdbc.queryForObject(
                             "SELECT e.emp_name FROM public.customer c LEFT JOIN public.employee e ON e.company_seq=c.company_seq AND e.emp_seq=c.emp_seq WHERE c.customer_seq=?",
-                            new Object[]{req.customerSeq}, String.class);
+                            String.class, req.customerSeq);
                 } catch (Exception ignore) {}
             }
             // Last resort: set to empSeq string to satisfy NOT NULL (schema requires non-null)

@@ -218,7 +218,11 @@ public class CustomerController {
         allParams.addAll(joinParams);
         allParams.addAll(params);
 
-        List<Map<String, Object>> rows = jdbc.query(sql.toString(), allParams.toArray(), (rs, i) -> {
+        List<Map<String, Object>> rows = jdbc.query(sql.toString(), ps -> {
+            for (int idx = 0; idx < allParams.size(); idx++) {
+                ps.setObject(idx + 1, allParams.get(idx));
+            }
+        }, (rs, i) -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", rs.getLong(1));
             m.put("companySeq", rs.getLong(2));
@@ -293,7 +297,10 @@ public class CustomerController {
         StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM public.customer c WHERE 1=1");
         List<Object> params = new ArrayList<>();
         if (assigneeFilter != null) { sql.append(" AND c.assignee_id = ?"); params.add(assigneeFilter); }
-        Long total = jdbc.queryForObject(sql.toString(), params.toArray(), Long.class);
+        // Note: queryForObject with Class uses PreparedStatementCreator for dynamic params
+        Long total = params.isEmpty()
+            ? jdbc.queryForObject(sql.toString(), Long.class)
+            : jdbc.queryForObject(sql.toString(), Long.class, params.toArray());
         return ResponseEntity.ok(Map.of("total", (total == null ? 0 : total)));
     }
 
@@ -369,7 +376,11 @@ public class CustomerController {
         sql.append(" AND d.customer_name IS NULL ");
         sql.append(" ORDER BY c.customer_name LIMIT ").append(Math.max(1, Math.min(1000, limit)));
 
-        java.util.List<java.util.Map<String,Object>> rows = jdbc.query(sql.toString(), params.toArray(), (rs, i) -> {
+        java.util.List<java.util.Map<String,Object>> rows = jdbc.query(sql.toString(), ps -> {
+            for (int idx = 0; idx < params.size(); idx++) {
+                ps.setObject(idx + 1, params.get(idx));
+            }
+        }, (rs, i) -> {
             java.util.Map<String,Object> m = new java.util.LinkedHashMap<>();
             m.put("companyType", rs.getString(1));
             m.put("customerName", rs.getString(2));
@@ -478,25 +489,8 @@ public class CustomerController {
                 (applyCompanyFilter ? (" AND UPPER(i." + colCompany + ") = UPPER(?) ") : "") +
                 "ORDER BY "+dateExpr+" DESC, " + colInv + " DESC, minor_name ASC";
         try {
-            List<Map<String,Object>> rows = jdbc.query(sqlPrimary, applyCompanyFilter ? new Object[]{custSeq, customerCompanyType} : new Object[]{custSeq}, (rs, i) -> {
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("invoiceNo", rs.getString(1));
-                m.put("invoiceDate", rs.getString(2));
-                m.put("minorName", rs.getString(3));
-                m.put("itemName", rs.getString(4));
-                m.put("curAmt", rs.getObject(5));
-                m.put("qty", rs.getObject(6));
-                m.put("companyType", rs.getString(7));
-                m.put("itemSeq", rs.getObject(8));
-                m.put("itemStdUnit", rs.getString(9));
-                return m;
-            });
-            log.info("[C360] PG transactions fetched: {} rows for custSeq={}", rows.size(), custSeq);
-            return ResponseEntity.ok(rows);
-        } catch (Exception primaryEx) {
-            log.warn("[C360] transactions primary query failed (will fallback without qty): {}", primaryEx.getMessage());
-            try {
-                List<Map<String,Object>> rows = jdbc.query(sqlFallback, applyCompanyFilter ? new Object[]{custSeq, customerCompanyType} : new Object[]{custSeq}, (rs, i) -> {
+            List<Map<String,Object>> rows = applyCompanyFilter
+                ? jdbc.query(sqlPrimary, (rs, i) -> {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("invoiceNo", rs.getString(1));
                     m.put("invoiceDate", rs.getString(2));
@@ -504,11 +498,56 @@ public class CustomerController {
                     m.put("itemName", rs.getString(4));
                     m.put("curAmt", rs.getObject(5));
                     m.put("qty", rs.getObject(6));
-                m.put("companyType", rs.getString(7));
-                m.put("itemSeq", rs.getObject(8));
-                m.put("itemStdUnit", rs.getString(9));
+                    m.put("companyType", rs.getString(7));
+                    m.put("itemSeq", rs.getObject(8));
+                    m.put("itemStdUnit", rs.getString(9));
                     return m;
-                });
+                }, custSeq, customerCompanyType)
+                : jdbc.query(sqlPrimary, (rs, i) -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("invoiceNo", rs.getString(1));
+                    m.put("invoiceDate", rs.getString(2));
+                    m.put("minorName", rs.getString(3));
+                    m.put("itemName", rs.getString(4));
+                    m.put("curAmt", rs.getObject(5));
+                    m.put("qty", rs.getObject(6));
+                    m.put("companyType", rs.getString(7));
+                    m.put("itemSeq", rs.getObject(8));
+                    m.put("itemStdUnit", rs.getString(9));
+                    return m;
+                }, custSeq);
+            log.info("[C360] PG transactions fetched: {} rows for custSeq={}", rows.size(), custSeq);
+            return ResponseEntity.ok(rows);
+        } catch (Exception primaryEx) {
+            log.warn("[C360] transactions primary query failed (will fallback without qty): {}", primaryEx.getMessage());
+            try {
+                List<Map<String,Object>> rows = applyCompanyFilter
+                    ? jdbc.query(sqlFallback, (rs, i) -> {
+                        Map<String, Object> m = new LinkedHashMap<>();
+                        m.put("invoiceNo", rs.getString(1));
+                        m.put("invoiceDate", rs.getString(2));
+                        m.put("minorName", rs.getString(3));
+                        m.put("itemName", rs.getString(4));
+                        m.put("curAmt", rs.getObject(5));
+                        m.put("qty", rs.getObject(6));
+                        m.put("companyType", rs.getString(7));
+                        m.put("itemSeq", rs.getObject(8));
+                        m.put("itemStdUnit", rs.getString(9));
+                        return m;
+                    }, custSeq, customerCompanyType)
+                    : jdbc.query(sqlFallback, (rs, i) -> {
+                        Map<String, Object> m = new LinkedHashMap<>();
+                        m.put("invoiceNo", rs.getString(1));
+                        m.put("invoiceDate", rs.getString(2));
+                        m.put("minorName", rs.getString(3));
+                        m.put("itemName", rs.getString(4));
+                        m.put("curAmt", rs.getObject(5));
+                        m.put("qty", rs.getObject(6));
+                        m.put("companyType", rs.getString(7));
+                        m.put("itemSeq", rs.getObject(8));
+                        m.put("itemStdUnit", rs.getString(9));
+                        return m;
+                    }, custSeq);
                 log.info("[C360] PG transactions fetched (fallback): {} rows for custSeq={}", rows.size(), custSeq);
                 return ResponseEntity.ok(rows);
             } catch (Exception fallbackEx) {
@@ -610,24 +649,24 @@ public class CustomerController {
                 "GROUP BY minor_name " +
                 "ORDER BY 2 DESC, 3 DESC";
         try {
-            List<Map<String,Object>> rows = jdbc.query(sqlWithQty, new Object[]{custSeq}, (rs, i) -> {
+            List<Map<String,Object>> rows = jdbc.query(sqlWithQty, (rs, i) -> {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("minorName", rs.getString(1));
                 m.put("qty", rs.getObject(2));
                 m.put("amt", rs.getObject(3));
                 return m;
-            });
+            }, custSeq);
             return ResponseEntity.ok(rows);
         } catch (Exception primaryEx) {
             log.warn("[C360] summary primary query failed (will fallback without qty): {}", primaryEx.getMessage());
             try {
-                List<Map<String,Object>> rows = jdbc.query(sqlNoQty, new Object[]{custSeq}, (rs, i) -> {
+                List<Map<String,Object>> rows = jdbc.query(sqlNoQty, (rs, i) -> {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("minorName", rs.getString(1));
                     m.put("qty", rs.getObject(2));
                     m.put("amt", rs.getObject(3));
                     return m;
-                });
+                }, custSeq);
                 return ResponseEntity.ok(rows);
             } catch (Exception fallbackEx) {
                 log.error("[C360] PG summary query failed (fallback too): {}", fallbackEx.toString());
@@ -663,12 +702,12 @@ public class CustomerController {
                     "WHERE "+colCust+" = ? AND "+dateExpr+" >= ? AND "+dateExpr+" < ? " +
                     "GROUP BY 1 " +
                     "ORDER BY 1";
-            java.util.List<java.util.Map<String,Object>> rows = jdbc.query(sql, new Object[]{custSeq, java.sql.Date.valueOf(start), java.sql.Date.valueOf(end)}, (rs, i) -> {
+            java.util.List<java.util.Map<String,Object>> rows = jdbc.query(sql, (rs, i) -> {
                 java.util.Map<String,Object> m = new java.util.LinkedHashMap<>();
                 m.put("month", rs.getInt(1));
                 m.put("amount", rs.getDouble(2));
                 return m;
-            });
+            }, custSeq, java.sql.Date.valueOf(start), java.sql.Date.valueOf(end));
             return ResponseEntity.ok(rows);
         } catch (Exception ex) {
             log.error("[C360] invoice-monthly simple aggregation failed: {}", ex.toString());
@@ -720,14 +759,14 @@ public class CustomerController {
                     "WHERE "+colCust+" = ? AND "+dateExpr+" >= ? AND "+dateExpr+" < ? " +
                     "GROUP BY 1,2,3 " +
                     "ORDER BY 1,2,3";
-            java.util.List<java.util.Map<String,Object>> rows = jdbc.query(sql, new Object[]{custSeq, java.sql.Date.valueOf(start), java.sql.Date.valueOf(end)}, (rs, i) -> {
+            java.util.List<java.util.Map<String,Object>> rows = jdbc.query(sql, (rs, i) -> {
                 java.util.Map<String,Object> m = new java.util.LinkedHashMap<>();
                 m.put("item_subcategory", rs.getString(1));
                 m.put("sales_mgmt_unit", rs.getString(2));
                 m.put("month", rs.getInt(3));
                 m.put("amount", rs.getDouble(4));
                 return m;
-            });
+            }, custSeq, java.sql.Date.valueOf(start), java.sql.Date.valueOf(end));
             return ResponseEntity.ok(rows);
         } catch (Exception ex) {
             log.error("[C360] invoice-monthly-by-dim query failed: {}", ex.toString());
@@ -757,7 +796,7 @@ public class CustomerController {
                     ? ("to_date(" + colDate + ", '" + dateFmt + "')")
                     : (colDate + "::date");
             String pgSql = "SELECT DISTINCT EXTRACT(YEAR FROM "+dateExpr+")::int AS y FROM "+tbl+" WHERE "+colCust+" = ? ORDER BY y DESC";
-            java.util.List<Integer> years = jdbc.query(pgSql, new Object[]{custSeq}, (rs, i) -> rs.getInt(1));
+            java.util.List<Integer> years = jdbc.query(pgSql, (rs, i) -> rs.getInt(1), custSeq);
             return ResponseEntity.ok(years);
         } catch (Exception ignorePg) {
             log.error("[C360] PG invoice-years query failed: {}", ignorePg.toString());
@@ -820,7 +859,11 @@ public class CustomerController {
             querySql = sql.toString();
             log.debug("[C360] recent-invoice-flags query: {} params: {}", querySql, queryParams);
 
-            java.util.List<java.util.Map<String,Object>> rows = jdbc.query(querySql, queryParams.toArray(), (rs, i) -> {
+            java.util.List<java.util.Map<String,Object>> rows = jdbc.query(querySql, ps -> {
+                for (int idx = 0; idx < queryParams.size(); idx++) {
+                    ps.setObject(idx + 1, queryParams.get(idx));
+                }
+            }, (rs, i) -> {
                 java.util.Map<String,Object> m = new java.util.LinkedHashMap<>();
                 m.put("customerSeqText", rs.getString(1));
                 m.put("hasRecent", true);

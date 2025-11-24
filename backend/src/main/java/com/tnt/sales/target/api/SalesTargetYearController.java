@@ -71,7 +71,11 @@ public class SalesTargetYearController {
         params.add(year);
         if (company != null && !company.isBlank()) params.add(company);
         if (ver != null) params.add(ver);
-        List<Map<String,Object>> rows = jdbc.query(sql, params.toArray(), (rs, i) -> {
+        List<Map<String,Object>> rows = jdbc.query(sql, ps -> {
+            for (int idx = 0; idx < params.size(); idx++) {
+                ps.setObject(idx + 1, params.get(idx));
+            }
+        }, (rs, i) -> {
             Map<String,Object> m = new LinkedHashMap<>();
             m.put("target_year", rs.getDate(1).toLocalDate().toString());
             m.put("version_no", rs.getInt(2));

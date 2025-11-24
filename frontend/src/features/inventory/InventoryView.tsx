@@ -41,6 +41,7 @@ export function InventoryView() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set())
 
   // Filters
   const [selectedWH, setSelectedWH] = useState<string>('')
@@ -118,6 +119,71 @@ export function InventoryView() {
   function formatAmount(amt: number | null | undefined): string {
     if (amt == null) return '0'
     return amt.toLocaleString('ko-KR', { maximumFractionDigits: 0 })
+  }
+
+  // Group data by itemSeq
+  type GroupedItem = {
+    itemSeq: number
+    itemNo: string
+    itemName: string
+    spec: string
+    totalQty: number
+    totalAmt: number
+    days0to30Qty: number
+    days31to60Qty: number
+    days61to90Qty: number
+    days91to180Qty: number
+    days180PlusQty: number
+    lots: StockAgingItem[]
+  }
+
+  function groupByItem(items: StockAgingItem[]): GroupedItem[] {
+    const groups = new Map<number, GroupedItem>()
+
+    items.forEach(item => {
+      const existing = groups.get(item.itemSeq)
+      if (existing) {
+        existing.totalQty += item.totalQty || 0
+        existing.totalAmt += item.totalAmt || 0
+        existing.days0to30Qty += item.days0to30Qty || 0
+        existing.days31to60Qty += item.days31to60Qty || 0
+        existing.days61to90Qty += item.days61to90Qty || 0
+        existing.days91to180Qty += item.days91to180Qty || 0
+        existing.days180PlusQty += item.days180PlusQty || 0
+        existing.lots.push(item)
+      } else {
+        groups.set(item.itemSeq, {
+          itemSeq: item.itemSeq,
+          itemNo: item.itemNo,
+          itemName: item.itemName,
+          spec: item.spec,
+          totalQty: item.totalQty || 0,
+          totalAmt: item.totalAmt || 0,
+          days0to30Qty: item.days0to30Qty || 0,
+          days31to60Qty: item.days31to60Qty || 0,
+          days61to90Qty: item.days61to90Qty || 0,
+          days91to180Qty: item.days91to180Qty || 0,
+          days180PlusQty: item.days180PlusQty || 0,
+          lots: [item]
+        })
+      }
+    })
+
+    return Array.from(groups.values())
+  }
+
+  const groupedData = groupByItem(data)
+
+  function toggleItem(itemSeq: number) {
+    setExpandedItems(prev => {
+      const next = new Set(prev)
+      if (next.has(itemSeq)) {
+        next.delete(itemSeq)
+      } else {
+        next.add(itemSeq)
+      }
+      return next
+    })
   }
 
   const extractItems = (payload: any): InventoryItem[] => {
@@ -343,9 +409,9 @@ export function InventoryView() {
             <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ background: 'var(--panel)', borderBottom: '2px solid var(--border)' }}>
+                  <th style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap', color: 'var(--muted)', fontWeight: 600, width: 40 }}></th>
                   <th style={{ padding: '10px 12px', textAlign: 'left', whiteSpace: 'nowrap', color: 'var(--muted)', fontWeight: 600 }}>품목코드</th>
                   <th style={{ padding: '10px 12px', textAlign: 'left', whiteSpace: 'nowrap', color: 'var(--muted)', fontWeight: 600 }}>품목명</th>
-                  <th style={{ padding: '10px 12px', textAlign: 'left', whiteSpace: 'nowrap', color: 'var(--muted)', fontWeight: 600 }}>LOT No.</th>
                   <th style={{ padding: '10px 12px', textAlign: 'left', whiteSpace: 'nowrap', color: 'var(--muted)', fontWeight: 600 }}>규격</th>
                   <th style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap', color: 'var(--muted)', fontWeight: 600 }}>총재고수량</th>
                   <th style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap', color: 'var(--muted)', fontWeight: 600 }}>총재고금액</th>
@@ -357,21 +423,80 @@ export function InventoryView() {
                 </tr>
               </thead>
               <tbody>
-                {data.map((item, idx) => (
-                  <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '10px 12px', color: 'var(--text)' }}>{item.itemNo || '-'}</td>
-                    <td style={{ padding: '10px 12px', color: 'var(--text)', fontWeight: 500 }}>{item.itemName || '-'}</td>
-                    <td style={{ padding: '10px 12px', color: 'var(--primary)', fontWeight: 500, fontSize: 12 }}>{item.lotNo || '-'}</td>
-                    <td style={{ padding: '10px 12px', color: 'var(--muted)', fontSize: 12 }}>{item.spec || '-'}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--text)', fontWeight: 600 }}>{formatNumber(item.totalQty)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--text)' }}>{formatAmount(item.totalAmt)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', color: '#2e7d32', background: '#f1f8e9' }}>{formatNumber(item.days0to30Qty)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', color: '#f57f17', background: '#fffde7' }}>{formatNumber(item.days31to60Qty)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', color: '#e65100', background: '#fff3e0' }}>{formatNumber(item.days61to90Qty)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', color: '#d84315', background: '#fbe9e7' }}>{formatNumber(item.days91to180Qty)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', color: '#c62828', background: '#ffebee', fontWeight: 600 }}>{formatNumber(item.days180PlusQty)}</td>
-                  </tr>
-                ))}
+                {groupedData.map((group, idx) => {
+                  const isExpanded = expandedItems.has(group.itemSeq)
+                  const hasMultipleLots = group.lots.length > 1
+
+                  return (
+                    <React.Fragment key={group.itemSeq}>
+                      {/* Item Row - Clickable */}
+                      <tr
+                        onClick={() => hasMultipleLots && toggleItem(group.itemSeq)}
+                        style={{
+                          borderBottom: isExpanded ? 'none' : '1px solid var(--border)',
+                          cursor: hasMultipleLots ? 'pointer' : 'default',
+                          background: isExpanded ? 'var(--hover)' : undefined
+                        }}
+                      >
+                        <td style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--muted)' }}>
+                          {hasMultipleLots && (
+                            <span style={{
+                              display: 'inline-block',
+                              transition: 'transform 0.2s',
+                              transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)'
+                            }}>
+                              ▶
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: '10px 12px', color: 'var(--text)' }}>{group.itemNo || '-'}</td>
+                        <td style={{ padding: '10px 12px', color: 'var(--text)', fontWeight: 600 }}>
+                          {group.itemName || '-'}
+                          {hasMultipleLots && (
+                            <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>
+                              ({group.lots.length} LOT)
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: '10px 12px', color: 'var(--muted)', fontSize: 12 }}>{group.spec || '-'}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--text)', fontWeight: 600 }}>{formatNumber(group.totalQty)}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--text)' }}>{formatAmount(group.totalAmt)}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#2e7d32', background: '#f1f8e9' }}>{formatNumber(group.days0to30Qty)}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#f57f17', background: '#fffde7' }}>{formatNumber(group.days31to60Qty)}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#e65100', background: '#fff3e0' }}>{formatNumber(group.days61to90Qty)}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#d84315', background: '#fbe9e7' }}>{formatNumber(group.days91to180Qty)}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#c62828', background: '#ffebee', fontWeight: 600 }}>{formatNumber(group.days180PlusQty)}</td>
+                      </tr>
+
+                      {/* LOT Detail Rows - Shown when expanded */}
+                      {isExpanded && group.lots.map((lot, lotIdx) => (
+                        <tr
+                          key={`${group.itemSeq}-${lotIdx}`}
+                          style={{
+                            borderBottom: lotIdx === group.lots.length - 1 ? '1px solid var(--border)' : '1px solid var(--border-light)',
+                            background: 'var(--background)'
+                          }}
+                        >
+                          <td style={{ padding: '8px 12px' }}></td>
+                          <td style={{ padding: '8px 12px', paddingLeft: 24, color: 'var(--muted)', fontSize: 12 }}>
+                            LOT
+                          </td>
+                          <td style={{ padding: '8px 12px', color: 'var(--primary)', fontWeight: 500, fontSize: 12 }}>
+                            {lot.lotNo || '-'}
+                          </td>
+                          <td style={{ padding: '8px 12px', color: 'var(--muted)', fontSize: 12 }}>{lot.spec || '-'}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text)', fontSize: 12 }}>{formatNumber(lot.totalQty)}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text)', fontSize: 12 }}>{formatAmount(lot.totalAmt)}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', color: '#2e7d32', background: '#f9fdf9', fontSize: 12 }}>{formatNumber(lot.days0to30Qty)}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', color: '#f57f17', background: '#fefef9', fontSize: 12 }}>{formatNumber(lot.days31to60Qty)}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', color: '#e65100', background: '#fefcf9', fontSize: 12 }}>{formatNumber(lot.days61to90Qty)}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', color: '#d84315', background: '#fefaf9', fontSize: 12 }}>{formatNumber(lot.days91to180Qty)}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', color: '#c62828', background: '#fef9f9', fontSize: 12 }}>{formatNumber(lot.days180PlusQty)}</td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -381,7 +506,8 @@ export function InventoryView() {
       {/* Summary */}
       {data.length > 0 && !loading && (
         <div style={{ padding: '12px 20px', borderTop: '2px solid var(--border)', background: 'var(--panel)', display: 'flex', gap: 20, fontSize: 13, color: 'var(--muted)' }}>
-          <div>총 <strong style={{ color: 'var(--text)' }}>{data.length}</strong>개 품목</div>
+          <div>총 <strong style={{ color: 'var(--text)' }}>{groupedData.length}</strong>개 품목</div>
+          <div>총 <strong style={{ color: 'var(--text)' }}>{data.length}</strong>개 LOT</div>
           <div>총 재고수량: <strong style={{ color: 'var(--text)' }}>{formatNumber(data.reduce((sum, item) => sum + (item.totalQty || 0), 0))}</strong></div>
           <div>총 재고금액: <strong style={{ color: 'var(--text)' }}>{formatAmount(data.reduce((sum, item) => sum + (item.totalAmt || 0), 0))}</strong></div>
         </div>
