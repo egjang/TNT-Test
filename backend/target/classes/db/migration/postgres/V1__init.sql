@@ -1,7 +1,0 @@
--- Flyway Postgres baseline
--- Create schema objects specific to Postgres here
--- Example:
--- CREATE TABLE public.healthcheck (
---   id SERIAL PRIMARY KEY,
---   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
--- );

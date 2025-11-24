@@ -1,7 +1,0 @@
-spring:
-  datasource:
-    # Enable SSL for environments that require encrypted connections
-    url: jdbc:postgresql://10.0.0.195:5432/postgres?sslmode=require
-  flyway:
-    # Add simple retries for transient network hiccups
-    connect-retries: 10
