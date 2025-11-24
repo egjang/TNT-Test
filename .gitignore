@@ -9,6 +9,9 @@ backend/*.class
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+frontend_mb/node_modules/
+frontend_mb/dist/
+frontend_mb/.vite/
 
 # IDE
 .idea/
