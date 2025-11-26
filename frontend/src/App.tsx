@@ -51,6 +51,7 @@ const PromotionPanel = lazy(() =>
 )
 const StandardUI = React.lazy(() => import('./features/standard_ui/StandardUI').then(m => ({ default: m.StandardUI })))
 const StandardInquiry = React.lazy(() => import('./features/lab/standard_inquiry/StandardInquiry').then(m => ({ default: m.StandardInquiry })))
+const StandardUICD = React.lazy(() => import('./features/lab/StandardUICD').then(m => ({ default: m.StandardUICD })))
 
 export default function App() {
   // selection key format example: 'calendar', 'demand', 'demand:excel-upload'
@@ -206,9 +207,10 @@ export default function App() {
           {loggedIn ? (
             <Suspense fallback={centerFallback}>
               {selectedKey === 'demand:list' ? (<DemandList />) :
-                selectedKey === 'standard-ui' ? (<StandardUI />) :
+                selectedKey === 'lab:standard-ui' ? (<StandardUI />) :
                   selectedKey === 'lab:standard-inquiry' ? (<StandardInquiry />) :
-                    (<MainView selectedKey={selectedKey} />)}
+                    selectedKey === 'lab:standard-ui-cd' ? (<StandardUICD />) :
+                      (<MainView selectedKey={selectedKey} />)}
             </Suspense>
           ) : (
             <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>

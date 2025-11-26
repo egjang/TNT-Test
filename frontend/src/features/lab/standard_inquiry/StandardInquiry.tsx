@@ -1,67 +1,62 @@
-import React, { useState } from 'react';
-import { StandardInquiryList, InquiryRow } from './StandardInquiryList';
-import { StandardInquiryForm } from './StandardInquiryForm';
-import { Button } from '../../../ui/atoms/Button';
-import { Plus } from 'lucide-react';
+import { useState } from 'react'
+import { StandardInquiryList, InquiryRow } from './StandardInquiryList'
+import { StandardInquiryForm } from './StandardInquiryForm'
 
 export function StandardInquiry() {
-    const [selectedInquiry, setSelectedInquiry] = useState<InquiryRow | null>(null);
-    const [isCreating, setIsCreating] = useState(false);
+  const [selectedInquiry, setSelectedInquiry] = useState<InquiryRow | null>(null)
+  const [isCreating, setIsCreating] = useState(false)
 
-    const handleSelect = (inquiry: InquiryRow) => {
-        setSelectedInquiry(inquiry);
-        setIsCreating(false);
-    };
+  const handleSelect = (inquiry: InquiryRow) => {
+    setSelectedInquiry(inquiry)
+    setIsCreating(false)
+  }
 
-    const handleCreate = () => {
-        setSelectedInquiry(null);
-        setIsCreating(true);
-    };
+  const handleCreate = () => {
+    setSelectedInquiry(null)
+    setIsCreating(true)
+  }
 
-    const handleSave = () => {
-        // Refresh list logic would go here
-        setIsCreating(false);
-        setSelectedInquiry(null);
-        window.dispatchEvent(new CustomEvent('tnt.sales.inquiry.reload'));
-    };
+  const handleBack = () => {
+    setSelectedInquiry(null)
+    setIsCreating(false)
+  }
 
+  const handleSave = () => {
+    setIsCreating(false)
+    setSelectedInquiry(null)
+    window.dispatchEvent(new CustomEvent('tnt.sales.inquiry.reload'))
+  }
+
+  // 상세/등록 모드
+  if (selectedInquiry || isCreating) {
     return (
-        <div className="h-full flex flex-col bg-[var(--bg)]">
-            <div className="p-6 pb-0">
-                <div className="flex justify-between items-center mb-6">
-                    <div>
-                        <h1 className="text-2xl font-bold text-[var(--text)]">Inquiry Management</h1>
-                        <p className="text-[var(--text-secondary)]">Manage customer inquiries and support tickets.</p>
-                    </div>
-                    <Button leftIcon={<Plus size={18} />} onClick={handleCreate}>
-                        New Inquiry
-                    </Button>
-                </div>
-            </div>
+      <div style={{ padding: 24, height: '100%', overflow: 'auto', background: 'var(--panel)' }}>
+        <StandardInquiryForm
+          inquiry={selectedInquiry}
+          onCancel={handleBack}
+          onSave={handleSave}
+        />
+      </div>
+    )
+  }
 
-            <div className="flex-1 flex overflow-hidden p-6 pt-0 gap-6">
-                {/* Left Panel: List */}
-                <div className={`${selectedInquiry || isCreating ? 'w-1/3 hidden md:block' : 'w-full'} transition-all duration-300`}>
-                    <StandardInquiryList
-                        onSelect={handleSelect}
-                        selectedId={selectedInquiry?.id}
-                    />
-                </div>
+  // 목록 모드
+  return (
+    <div style={{ padding: 24, height: '100%', overflow: 'auto', background: 'var(--panel)' }}>
+      {/* 페이지 헤더 */}
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>문의 관리</h1>
+        <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
+          고객 문의 및 지원 요청을 관리합니다.
+        </p>
+      </div>
 
-                {/* Right Panel: Detail/Form */}
-                {(selectedInquiry || isCreating) && (
-                    <div className="flex-1 animate-slide-up">
-                        <StandardInquiryForm
-                            inquiry={selectedInquiry}
-                            onCancel={() => {
-                                setSelectedInquiry(null);
-                                setIsCreating(false);
-                            }}
-                            onSave={handleSave}
-                        />
-                    </div>
-                )}
-            </div>
-        </div>
-    );
+      {/* 목록 화면 */}
+      <StandardInquiryList
+        onSelect={handleSelect}
+        onCreate={handleCreate}
+        selectedId={selectedInquiry?.id}
+      />
+    </div>
+  )
 }

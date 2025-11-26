@@ -79,6 +79,8 @@ public class OrdersQueryController {
             @RequestParam(value = "fromDate", required = false) String fromDate,
             @RequestParam(value = "toDate", required = false) String toDate,
             @RequestParam(value = "salesEmpSeq", required = false) Long salesEmpSeq,
+            @RequestParam(value = "tntSalesEmpSeq", required = false) Long tntSalesEmpSeq,
+            @RequestParam(value = "dysSalesEmpSeq", required = false) Long dysSalesEmpSeq,
             @RequestParam(value = "offset", required = false, defaultValue = "0") int offset,
             @RequestParam(value = "limit", required = false, defaultValue = "100") int limit
     ) {
@@ -91,7 +93,7 @@ public class OrdersQueryController {
 
             // Handle ALL: UNION TNT and DYS
             if ("ALL".equals(companyUpper)) {
-                return handleUnionQuery(fromDate, toDate, salesEmpSeq, offset, limit);
+                return handleUnionQuery(fromDate, toDate, tntSalesEmpSeq, dysSalesEmpSeq, offset, limit);
             }
 
             String db = "TNT";
@@ -146,15 +148,16 @@ public class OrdersQueryController {
 
     /**
      * Handle ALL company query: UNION TNT and DYS databases
+     * tntSalesEmpSeq/dysSalesEmpSeq가 전달되면 각 회사별 담당자 필터 적용
      */
-    private ResponseEntity<?> handleUnionQuery(String fromDate, String toDate, Long salesEmpSeq, int offset, int limit) {
+    private ResponseEntity<?> handleUnionQuery(String fromDate, String toDate, Long tntSalesEmpSeq, Long dysSalesEmpSeq, int offset, int limit) {
         try {
             LocalDate from = parseYyMmDd(fromDate);
             LocalDate to = parseYyMmDd(toDate);
 
-            // Query both TNT and DYS
-            List<Map<String, Object>> tntRows = queryCompanyData("TNT", from, to, salesEmpSeq, 0, limit * 2);
-            List<Map<String, Object>> dysRows = queryCompanyData("DYS", from, to, salesEmpSeq, 0, limit * 2);
+            // Query both TNT and DYS with their respective emp_seq (null if not provided)
+            List<Map<String, Object>> tntRows = queryCompanyData("TNT", from, to, tntSalesEmpSeq, 0, limit * 2);
+            List<Map<String, Object>> dysRows = queryCompanyData("DYS", from, to, dysSalesEmpSeq, 0, limit * 2);
 
             // Add CompanyType field to distinguish rows
             for (Map<String, Object> row : tntRows) {
@@ -202,6 +205,8 @@ public class OrdersQueryController {
      * Query single company database
      */
     private List<Map<String, Object>> queryCompanyData(String db, LocalDate from, LocalDate to, Long salesEmpSeq, int offset, int limit) {
+        // 날짜 필터용 컬럼명 변형 시도
+        String[] dateColVariants = new String[] { "OrderTextDate", "OrderTextDat", "LastDateTime" };
         String[] orderVariants = new String[] {
                 "ORDER BY LastDateTime DESC",
                 "ORDER BY OrderTextDate DESC, OrderTextNo DESC",
@@ -210,34 +215,36 @@ public class OrdersQueryController {
                 ""
         };
 
-        for (String ord : orderVariants) {
-            try {
-                String col = ord.contains("OrderTextDate") ? "OrderTextDate" : (ord.contains("OrderTextDat") ? "OrderTextDat" : null);
-                String where = "";
-                List<Object> args = new ArrayList<>();
+        for (String dateCol : dateColVariants) {
+            for (String ord : orderVariants) {
+                try {
+                    String where = "";
+                    List<Object> args = new ArrayList<>();
 
-                if (col != null && (from != null || to != null)) {
-                    if (from != null) {
-                        where += (where.isEmpty() ? " WHERE " : " AND ") + "CAST(" + col + " AS date) >= ?";
-                        args.add(java.sql.Date.valueOf(from));
+                    // 날짜 필터 적용
+                    if (from != null || to != null) {
+                        if (from != null) {
+                            where += (where.isEmpty() ? " WHERE " : " AND ") + "CAST(" + dateCol + " AS date) >= ?";
+                            args.add(java.sql.Date.valueOf(from));
+                        }
+                        if (to != null) {
+                            where += (where.isEmpty() ? " WHERE " : " AND ") + "CAST(" + dateCol + " AS date) <= ?";
+                            args.add(java.sql.Date.valueOf(to));
+                        }
                     }
-                    if (to != null) {
-                        where += (where.isEmpty() ? " WHERE " : " AND ") + "CAST(" + col + " AS date) <= ?";
-                        args.add(java.sql.Date.valueOf(to));
+                    if (salesEmpSeq != null) {
+                        where += (where.isEmpty() ? " WHERE " : " AND ") + "SalesEmpSeq = ?";
+                        args.add(salesEmpSeq);
                     }
-                }
-                if (salesEmpSeq != null) {
-                    where += (where.isEmpty() ? " WHERE " : " AND ") + "SalesEmpSeq = ?";
-                    args.add(salesEmpSeq);
-                }
 
-                String ordClause = (ord == null || ord.isBlank()) ? "ORDER BY 1" : ord;
-                String sql = ("SELECT * FROM " + db + ".dbo.tnt_TSLOrderText " + where + " " + ordClause + " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY").trim();
-                args.add(offset);
-                args.add(limit);
+                    String ordClause = (ord == null || ord.isBlank()) ? "ORDER BY 1" : ord;
+                    String sql = ("SELECT * FROM " + db + ".dbo.tnt_TSLOrderText " + where + " " + ordClause + " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY").trim();
+                    args.add(offset);
+                    args.add(limit);
 
-                return mssql.queryForList(sql, args.toArray());
-            } catch (Exception ignored) {
+                    return mssql.queryForList(sql, args.toArray());
+                } catch (Exception ignored) {
+                }
             }
         }
         return new ArrayList<>();

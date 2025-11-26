@@ -1,495 +1,427 @@
-import React, { useEffect, useState } from 'react'
-import closeIcon from '../../assets/icons/close.svg'
-import docIcon from '../../assets/icons/doc.svg'
-import warehouseIcon from '../../assets/icons/warehouse.svg'
+import { useEffect, useState } from 'react'
+import { ChevronLeft, ChevronRight, RefreshCw, Calendar, FileText } from 'lucide-react'
 
-type Props = {
-  data?: {
-    orderNo?: string
-    companyCode?: string
-    customer?: string
-    createdBy?: string
-    regionGroup?: string
-    orderContent?: string
-    requests?: string
-    deliveryPlace?: string
-    manager?: string
-    deliveryDueDate?: string
-  }
+type OrderRow = {
+  id?: number
+  orderTextNo?: string
+  customerName?: string
+  orderText?: string
+  orderRemark?: string
+  createdAt?: string
+  deliveryDueDate?: string
+  companyCode?: string
+  salesEmpName?: string
 }
 
-export function OrderSheetRightPanel({ data }: Props) {
-  const [cust, setCust] = useState<any>(null)
-  const [cart, setCart] = useState<Array<{ itemSeq: any; itemName: string; itemSpec?: string; qty: number | ''; itemStdUnit?: string; companyType?: string | null }>>([])
-  const [availMap, setAvailMap] = useState<Record<string, { rows:Array<{ whName:string; avail:number; unitName:string }>; total:number; unitName:string }>>({})
-  const [regionGroup, setRegionGroup] = useState<string>('')
-  const [requests, setRequests] = useState<string>('')
-  const [deliveryDueDate, setDeliveryDueDate] = useState<string>(() => {
-    const d = new Date()
-    d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
-    return d.toISOString().slice(0, 10)
-  })
-  const empName = (() => { try { return localStorage.getItem('tnt.sales.empName') || localStorage.getItem('tnt.sales.empId') || '' } catch { return '' } })()
-  const assigneeId = (() => { try { return localStorage.getItem('tnt.sales.assigneeId') || '' } catch { return '' } })()
-  const [saving, setSaving] = useState(false)
-  const [notice, setNotice] = useState<{ open:boolean; text:string }>(()=>({ open:false, text:'' }))
-  const [debugPayload, setDebugPayload] = useState<any | null>(null)
-  const debugMode = false
-  const [lastSent, setLastSent] = useState<string>('')
-  const [lastReceived, setLastReceived] = useState<string>('')
-  const [orderNo, setOrderNo] = useState<string>('')
-  // order preview modal removed
-  
+export function OrderSheetRightPanel() {
+  const [orders, setOrders] = useState<OrderRow[]>([])
+  const [loading, setLoading] = useState(false)
+  const [selectedDate, setSelectedDate] = useState<Date>(() => new Date())
+  const [expandedId, setExpandedId] = useState<number | null>(null)
 
-  async function resolveSalesEmpSeq(companyCode: string): Promise<string> {
-    const aid = assigneeId || ''
-    const empId = (() => { try { return localStorage.getItem('tnt.sales.empId') || '' } catch { return '' } })()
-    if (!aid && !empId) {
-      // local fallback chain
-      const localSeq = (() => { try { return localStorage.getItem('tnt.sales.empSeq') || '' } catch { return '' } })()
-      return localSeq || '4'
-    }
+  // Resolve both TNT and DYS emp_seq for current user
+  async function resolveMyEmpSeqBoth(): Promise<{ tntEmpSeq: string; dysEmpSeq: string }> {
     try {
+      const aid = localStorage.getItem('tnt.sales.assigneeId') || ''
+      const eid = localStorage.getItem('tnt.sales.empId') || ''
       const p = new URLSearchParams()
       if (aid) p.set('assigneeId', aid)
-      if (empId) p.set('empId', empId)
-      if (companyCode) p.set('companyCode', companyCode)
+      if (eid) p.set('empId', eid)
       const rs = await fetch(`/api/v1/employee/by-assignee?${p.toString()}`, { cache: 'no-store' })
-      if (!rs.ok) {
-        const localSeq = (() => { try { return localStorage.getItem('tnt.sales.empSeq') || '' } catch { return '' } })()
-        return localSeq || '4'
+      if (!rs.ok) return { tntEmpSeq: '', dysEmpSeq: '' }
+      const j = await rs.json().catch(() => null as any)
+      const tntSeq = j?.tnt_emp_seq
+      const dysSeq = j?.dys_emp_seq
+      return {
+        tntEmpSeq: (tntSeq != null && String(tntSeq)) ? String(tntSeq) : '',
+        dysEmpSeq: (dysSeq != null && String(dysSeq)) ? String(dysSeq) : ''
       }
-      const j = await rs.json().catch(()=>null as any)
-      const v = j?.resolvedSalesEmpSeq ?? (companyCode?.toUpperCase()==='DYS' ? j?.dys_emp_seq : j?.tnt_emp_seq)
-      const out = (v!=null && String(v)) ? String(v) : ''
-      if (out) return out
-      const localSeq = (() => { try { return localStorage.getItem('tnt.sales.empSeq') || '' } catch { return '' } })()
-      return localSeq || '4'
-    } catch {
-      const localSeq = (() => { try { return localStorage.getItem('tnt.sales.empSeq') || '' } catch { return '' } })()
-      return localSeq || '4'
-    }
+    } catch { return { tntEmpSeq: '', dysEmpSeq: '' } }
   }
 
-  function buildPayload(opts?: { salesEmpSeq?: string }) {
-    const d = data || {}
-    const today = new Date(); const y = today.getFullYear(); const m = String(today.getMonth()+1).padStart(2,'0'); const dd = String(today.getDate()).padStart(2,'0')
-    const todayYmd = `${y}${m}${dd}`
-    const orderTextNo = `A${todayYmd}`
-    // Build OrderText: one line per item (품목 - 수량 Unit). 요청 사항은 OrderRemark로 분리하여 전송.
-    const orderTextItems = (cart||[]).map(it => {
-      const qty = (Number(it.qty) || 0).toFixed(2)
-      const unit = it.itemStdUnit ? ` ${it.itemStdUnit}` : ''
-      return `${it.itemName}${it.itemSpec?` ${it.itemSpec}`:''} - ${qty}${unit}`
-    }).join('\n')
-    const orderText = orderTextItems
-    const custEmpName = String(d.manager || cust?.ownerName || '')
-    const companyCode = (cust?.companyCode || d.companyCode || 'TNT')
-    const salesEmpSeqFinal = (opts?.salesEmpSeq && String(opts.salesEmpSeq)) || (() => { try { const v = localStorage.getItem('tnt.sales.empSeq'); return v ? String(v) : '' } catch { return '' } })()
-    const cc = String(companyCode || 'TNT').toUpperCase()
-    const certId = cc === 'DYS' ? 'DYS_CRM' : 'TNT_CRM'
-    const dsnVal = cc === 'DYS' ? 'dys_bis' : 'tnt_bis'
-    const dsnOperVal = cc === 'DYS' ? 'dys_oper' : 'tnt_oper'
-    const dsnBisVal = dsnVal
-    return {
-      payload: {
-        ROOT: {
-          certId,
-          certKey: '9836164F-3601-4DBB-9D6D-54685CD89B95',
-          dsn: dsnVal,
-          dsnOper: dsnOperVal,
-          dsnBis: dsnBisVal,
-          companySeq: '1',
-          languageSeq: 1,
-          securityType: 0,
-          userId: empName || '',
-          data: {
-            ROOT: {
-              DataBlock1: [
-                {
-                  WorkingTag: 'A', IDX_NO: 0, Status: '0', DataSeq: 1, Selected: 1,
-                  TABLE_NAME: '', UserName: empName || '',
-                  OrderTextNo: orderTextNo,
-                  StdDate: todayYmd,
-                  CustSeq: (cust?.customerSeq != null ? String(cust.customerSeq) : ''),
-                  SalesEmpSeq: salesEmpSeqFinal,
-                  CustEmpName: custEmpName,
-                  WHSeq: '',
-                  DelvDate: (deliveryDueDate||'').replaceAll('-', ''),
-                  OrderText: orderText,
-                  OrderRemark: requests || '',
-                }
-              ]
-            }
-          }
-        }
-      },
-      orderText,
-    }
+  // Format date for display
+  const formatDateDisplay = (date: Date): string => {
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, '0')
+    const d = String(date.getDate()).padStart(2, '0')
+    const days = ['일', '월', '화', '수', '목', '금', '토']
+    const dayName = days[date.getDay()]
+    return `${y}.${m}.${d} (${dayName})`
   }
-  useEffect(() => {
-    const onSel = (e: any) => {
-      const c = e?.detail?.customer ?? null
-      setCust(c)
-      if (c) {
-        const province = c.addrProvinceName ?? c.addr_province_name ?? ''
-        const city = c.addrCityName ?? c.addr_city_name ?? ''
-        const rg = [province, city].filter((s: string) => !!s && String(s).trim().length > 0).join(' ')
-        if (rg) setRegionGroup(String(rg))
-        // Clear order sheet transient fields on customer change
-        try { setOrderNo('') } catch {}
-        try { setRequests('') } catch {}
-        try { setCart([]); setAvailMap({}) } catch {}
-        try {
-          localStorage.setItem('tnt.sales.ordersheet.cart', JSON.stringify([]))
-          window.dispatchEvent(new CustomEvent('tnt.sales.ordersheet.cart.changed', { detail: { cart: [] } }) as any)
-        } catch {}
-        try { localStorage.removeItem('tnt.sales.ordersheet.requests') } catch {}
-      }
+
+  // Format date for API
+  const formatDateApi = (date: Date): string => {
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, '0')
+    const d = String(date.getDate()).padStart(2, '0')
+    return `${y}${m}${d}`
+  }
+
+  // Check if selected date is today
+  const isToday = (): boolean => {
+    const today = new Date()
+    return selectedDate.toDateString() === today.toDateString()
+  }
+
+  // Navigate date
+  const navigateDate = (direction: 'prev' | 'next') => {
+    const newDate = new Date(selectedDate)
+    if (direction === 'prev') {
+      newDate.setDate(newDate.getDate() - 1)
+    } else {
+      newDate.setDate(newDate.getDate() + 1)
     }
-    window.addEventListener('tnt.sales.ordersheet.customer.selected' as any, onSel)
-    const onCart = (e: any) => {
-      setCart(Array.isArray(e?.detail?.cart) ? e.detail.cart : [])
-    }
-    window.addEventListener('tnt.sales.ordersheet.cart.changed' as any, onCart)
-    return () => {
-      window.removeEventListener('tnt.sales.ordersheet.customer.selected' as any, onSel)
-      window.removeEventListener('tnt.sales.ordersheet.cart.changed' as any, onCart)
-    }
-  }, [])
-  const d = data || {}
-  function extractAvailRows(jsonText: string): Array<{ whName:string; avail:number; unitName:string }> {
+    setSelectedDate(newDate)
+  }
+
+  // Go to today
+  const goToToday = () => {
+    setSelectedDate(new Date())
+  }
+
+  // Load orders for selected date (TNT + DYS for current user)
+  async function loadOrders() {
+    setLoading(true)
     try {
-      const obj = JSON.parse(jsonText)
-      const q:any[] = [obj]
-      let arr:any[]|null = null
-      while (q.length) {
-        const cur = q.shift()
-        if (Array.isArray(cur)) { if (cur.length && typeof cur[0] === 'object') { arr = cur; break } }
-        else if (cur && typeof cur === 'object') for (const k of Object.keys(cur)) q.push(cur[k])
+      const dateStr = formatDateApi(selectedDate)
+      // 날짜를 YY-MM-DD 형식으로 변환 (백엔드 API 형식)
+      const dateYyMmDd = `${dateStr.slice(2, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`
+
+      // Get both TNT and DYS emp_seq for current user
+      const { tntEmpSeq, dysEmpSeq } = await resolveMyEmpSeqBoth()
+
+      const params = new URLSearchParams()
+      params.set('company', 'ALL')
+      params.set('fromDate', dateYyMmDd)
+      params.set('toDate', dateYyMmDd)
+      // Pass both emp_seq for filtering
+      if (tntEmpSeq) params.set('tntSalesEmpSeq', tntEmpSeq)
+      if (dysEmpSeq) params.set('dysSalesEmpSeq', dysEmpSeq)
+
+      const response = await fetch(`/api/v1/orders/external/tsl-order-text?${params.toString()}`)
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
       }
-      if (!arr) return []
-      return arr.map((r:any) => {
-        const wh = r?.WHName ?? r?.whName ?? r?.warehouseName ?? r?.WH_NM ?? r?.wh_nm ?? ''
-        const avail = Number(r?.AvailStock ?? r?.availStock ?? r?.AVAIL_STOCK ?? r?.qty ?? 0) || 0
-        const unit = r?.UnitName ?? r?.unitName ?? r?.UNIT_NAME ?? r?.salesMgmtUnit ?? ''
-        return { whName: String(wh||''), avail, unitName: String(unit||'') }
-      })
-    } catch { return [] }
+
+      const data = await response.json()
+      let list: OrderRow[] = []
+
+      // Parse the response structure
+      if (data?.data?.ROOT?.DataBlock1) {
+        list = data.data.ROOT.DataBlock1.map((item: any, idx: number) => ({
+          id: idx,
+          orderTextNo: item.OrderTextNo || item.orderTextNo,
+          customerName: item.CustName || item.custName || item.customerName,
+          orderText: item.OrderText || item.orderText,
+          orderRemark: item.OrderRemark || item.orderRemark,
+          createdAt: item.RegDate || item.regDate || item.createdAt,
+          deliveryDueDate: item.DelvDate || item.delvDate || item.deliveryDueDate,
+          companyCode: item.CompanyType || item.CompanyCode || item.companyCode || 'TNT',
+          salesEmpName: item.SalesEmpName || item.salesEmpName,
+        }))
+      } else if (Array.isArray(data)) {
+        list = data.map((item: any, idx: number) => ({
+          id: idx,
+          orderTextNo: item.orderTextNo || item.OrderTextNo,
+          customerName: item.customerName || item.CustName || item.CustSeq,
+          orderText: item.orderText || item.OrderText,
+          orderRemark: item.orderRemark || item.OrderRemark,
+          createdAt: item.createdAt || item.RegDate,
+          deliveryDueDate: item.deliveryDueDate || item.DelvDate,
+          companyCode: item.CompanyType || item.companyCode || 'TNT',
+          salesEmpName: item.salesEmpName || item.SalesEmpName || item.SalesEmpSeq,
+        }))
+      }
+
+      setOrders(list)
+    } catch (e) {
+      console.error('Failed to load orders:', e)
+      setOrders([])
+    } finally {
+      setLoading(false)
+    }
   }
+
+  // Load on mount and date change
+  useEffect(() => {
+    loadOrders()
+  }, [selectedDate])
+
+  // Listen for order created event
+  useEffect(() => {
+    const handleOrderCreated = () => {
+      loadOrders()
+    }
+    window.addEventListener('tnt.sales.ordersheet.order.created' as any, handleOrderCreated)
+    return () => {
+      window.removeEventListener('tnt.sales.ordersheet.order.created' as any, handleOrderCreated)
+    }
+  }, [selectedDate])
+
+  // Toggle expand order details
+  const toggleExpand = (id: number | undefined) => {
+    if (id === undefined) return
+    setExpandedId(expandedId === id ? null : id)
+  }
+
   return (
-    <div className="card" style={{ padding: 12, height: '100%', overflow: 'auto', background: 'var(--sheet-bg)', marginTop: 3 }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--panel)' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-        <img src={docIcon} className="icon" alt="수주장" />
-        <strong>수주장</strong>
-      </div>
-
-      {/* Top fields (restored) */}
-      <div className="field inline-field"><label>수주장번호</label>
-        <div className="subject-input" style={{ padding: '6px 8px' }}>{orderNo || d.orderNo || '-'}</div>
-      </div>
-      <div className="field inline-field"><label>회사코드</label>
-        <div className="subject-input" style={{ padding: '6px 8px' }}>{(cust?.companyCode || d.companyCode || 'TNT')}</div>
-      </div>
-      <div className="field inline-field"><label>거래처</label>
-        <div className="subject-input" style={{ padding: '6px 8px' }}>{d.customer || cust?.customerName || '-'}</div>
-      </div>
-      <div className="field inline-field"><label>등록자</label>
-        <div className="subject-input" style={{ padding: '6px 8px' }}>{empName || '-'}</div>
-      </div>
-      <div className="field inline-field" style={{ marginBottom: 8 }}><label>지역 그룹</label>
-        <input
-          className="search-input"
-          type="text"
-          value={regionGroup}
-          onChange={(e) => { setRegionGroup(e.target.value) }}
-          placeholder="지역 그룹"
-        />
-      </div>
-      <div className="field inline-field row-2" style={{ marginTop: 4 }}><label>요청 사항</label>
-        <textarea
-          className="search-input"
-          value={requests}
-          onChange={(e) => { setRequests(e.target.value) }}
-          placeholder="요청 사항"
-          style={{ minHeight: 80 }}
-        />
-      </div>
-      <div className="field inline-field"><label>담당자</label>
-        <div className="subject-input" style={{ padding: '6px 8px' }}>{d.manager || cust?.ownerName || '-'}</div>
-      </div>
-      <div className="field inline-field"><label>납품요청일</label>
-        <input
-          className="search-input"
-          type="date"
-          value={deliveryDueDate}
-          onChange={(e) => { setDeliveryDueDate(e.target.value) }}
-        />
-      </div>
-
-      {/* Order list + Order button (width aligned to sheet) */}
-      <div style={{ fontSize: 12 }}>
-        <div style={{ width: '100%', maxWidth: 820, margin: '0 auto' }}>
-          <div className="table-container" style={{ maxHeight: '45vh', minHeight: '36vh', marginTop: 8 }}>
-          {(!cart || cart.length === 0) ? (
-            <div className="empty-state">담긴 품목이 없습니다</div>
-          ) : (
-            <table className="table" style={{ width: '100%' }}>
-              <colgroup>
-                <col />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>품목</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cart.map((it, idx) => (
-                  <tr
-                    key={String(it.itemSeq)}
-                    onDoubleClick={() => {
-                      const next = cart.filter((_, i) => i !== idx)
-                      setCart(next)
-                      try {
-                        localStorage.setItem('tnt.sales.ordersheet.cart', JSON.stringify(next))
-                        window.dispatchEvent(new CustomEvent('tnt.sales.ordersheet.cart.changed', { detail: { cart: next } }) as any)
-                      } catch {}
-                    }}
-                    title="더블클릭하면 목록에서 제외됩니다"
-                    style={{ height: 48 }}
-                  >
-                    <td>
-                      <div style={{ display:'flex', alignItems:'center', gap: 8 }}>
-                        <div style={{ fontWeight: 400, flex: 1 }}>
-                          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                            {(() => {
-                              const ct = (it as any).companyType || (it as any).company_type || (selectedCustomer?.companyType) || (selectedCustomer?.companyCode)
-                              const k = (ct || '').toString().toUpperCase()
-                              const label = k === 'TNT' ? 'T' : k === 'DYS' ? 'D' : k === 'ALL' ? 'A' : ''
-                              const color = k === 'TNT' ? '#2563eb' : k === 'DYS' ? '#10b981' : k === 'ALL' ? '#f59e0b' : '#9ca3af'
-                              return label ? (
-                                <span style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:18, height:18, borderRadius:'50%', background: color, color:'#fff', fontSize:11, fontWeight:800, boxShadow:'0 0 0 1px rgba(0,0,0,.08)' }}>
-                                  {label}
-                                </span>
-                              ) : null
-                            })()}
-                            <span>{it.itemName}</span>
-                            {it.itemStdUnit ? (<span style={{ fontSize:11, color:'var(--text-muted)' }}>({it.itemStdUnit})</span>) : null}
-                          </div>
-                        </div>
-                        <input
-                          className="search-input"
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={it.qty === '' ? '' : String(it.qty)}
-                          placeholder=""
-                          onChange={(e) => {
-                            const val = e.target.value
-                            const next = cart.slice()
-                            if (val === '') {
-                              next[idx] = { ...next[idx], qty: '' as any }
-                            } else {
-                              const v = Number(val)
-                              if (!isFinite(v) || v < 0) {
-                                next[idx] = { ...next[idx], qty: '' as any }
-                              } else {
-                                // Limit to 2 decimal places
-                                const limited = Math.floor(v * 100) / 100
-                                next[idx] = { ...next[idx], qty: limited }
-                              }
-                            }
-                            setCart(next)
-                            try {
-                              localStorage.setItem('tnt.sales.ordersheet.cart', JSON.stringify(next))
-                              window.dispatchEvent(new CustomEvent('tnt.sales.ordersheet.cart.changed', { detail: { cart: next } }) as any)
-                            } catch {}
-                          }}
-                          style={{ minWidth: 120, textAlign: 'right' }}
-                        />
-                        {it.itemStdUnit ? <span style={{ fontSize:12, color:'var(--text-muted)' }}>{it.itemStdUnit}</span> : null}
-                        <span
-                          role="button"
-                          tabIndex={0}
-                          className="icon-button"
-                          aria-label="재고 조회"
-                          title="재고 조회"
-                          onClick={async () => {
-                            try {
-                              const body = {
-                                bizUnit: '', stdDate: '', whSeq: '',
-                                itemName: String(it.itemName||''), itemNo: '', itemSeq: String(it.itemSeq||''), pageNo: '', pageSize: ''
-                              }
-                              const rs = await fetch('/api/v1/items/avail-stock', { method:'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-                              if (rs.ok) {
-                                const resp = await rs.json().catch(()=> ({} as any))
-                                const received = (resp && (resp.receivedPayload || resp))
-                                const j = JSON.stringify(received, null, 2)
-                                const rows = extractAvailRows(j)
-                                const total = rows.reduce((s,r)=> s + (Number(r.avail)||0), 0)
-                                const unit = rows.find(r=> (r.unitName||'').trim().length>0)?.unitName || ''
-                                setAvailMap(prev => ({ ...prev, [String(it.itemSeq)]: { rows, total, unitName: unit } }))
-                              }
-                            } catch {}
-                          }}
-                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); (async () => {
-                            try {
-                              const body = { bizUnit:'', stdDate:'', whSeq:'', itemName:String(it.itemName||''), itemNo:'', itemSeq:String(it.itemSeq||''), pageNo:'', pageSize:'' }
-                              const rs = await fetch('/api/v1/items/avail-stock', { method:'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-                              if (rs.ok) {
-                                const resp = await rs.json().catch(()=> ({} as any))
-                                const received = (resp && (resp.receivedPayload || resp))
-                                const j = JSON.stringify(received, null, 2)
-                                const rows = extractAvailRows(j)
-                                const total = rows.reduce((s,r)=> s + (Number(r.avail)||0), 0)
-                                const unit = rows.find(r=> (r.unitName||'').trim().length>0)?.unitName || ''
-                                setAvailMap(prev => ({ ...prev, [String(it.itemSeq)]: { rows, total, unitName: unit } }))
-                              }
-                            } catch {}
-                          })() } }}
-                        >
-                          <img src={warehouseIcon} className="icon" alt="재고" />
-                        </span>
-                        <span
-                          role="button"
-                          tabIndex={0}
-                          className="icon-button"
-                          aria-label="담기 취소"
-                          title="담기 취소"
-                          onClick={() => {
-                            const next = cart.filter((_, i) => i !== idx)
-                            setCart(next)
-                            try {
-                              localStorage.setItem('tnt.sales.ordersheet.cart', JSON.stringify(next))
-                              window.dispatchEvent(new CustomEvent('tnt.sales.ordersheet.cart.changed', { detail: { cart: next } }) as any)
-                            } catch {}
-                          }}
-                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const next = cart.filter((_, i) => i !== idx); setCart(next); try { localStorage.setItem('tnt.sales.ordersheet.cart', JSON.stringify(next)); window.dispatchEvent(new CustomEvent('tnt.sales.ordersheet.cart.changed', { detail: { cart: next } }) as any) } catch {} } }}
-                        >
-                          <img src={closeIcon} className="icon" alt="취소" />
-                        </span>
-                      </div>
-                      {/* 품목명 아래의 수량/단위 텍스트 제거 */}
-                      {(() => {
-                        const info = availMap[String(it.itemSeq)]
-                        if (!info || !info.rows.length) return null
-                        return (
-                          <div style={{ marginTop: 6 }}>
-                            <div className="table-container" style={{ maxHeight: 120, overflow: 'auto', border: 0 }}>
-                              <table className="table" style={{ width:'100%', fontSize: 11 }}>
-                                <thead>
-                                  <tr>
-                                    <th>창고명</th>
-                                    <th style={{ width: 100, textAlign:'right' }}>가용재고</th>
-                                    <th style={{ width: 120 }}>단위</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {info.rows.map((r, i2) => (
-                                    <tr key={i2}>
-                                      <td>{r.whName||'-'}</td>
-                                      <td style={{ textAlign:'right' }}>{Number(r.avail||0).toLocaleString()}</td>
-                                      <td>{r.unitName||info.unitName||''}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        )
-                      })()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+      <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <FileText size={18} />
+            <strong style={{ fontSize: 16 }}>내 수주장 등록 현황</strong>
           </div>
-          <div className="controls" style={{ justifyContent: 'flex-end', marginTop: 10 }}>
+          <button
+            onClick={loadOrders}
+            disabled={loading}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              padding: 6,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--text-secondary)',
+              borderRadius: 4,
+            }}
+            title="새로고침"
+          >
+            <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+
+        {/* Date Navigation */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '8px 12px',
+          background: 'var(--bg-secondary)',
+          borderRadius: 8,
+          border: '1px solid var(--border)'
+        }}>
+          <button
+            onClick={() => navigateDate('prev')}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 4,
+              display: 'flex',
+              alignItems: 'center',
+              color: 'var(--text-primary)',
+              borderRadius: 4,
+            }}
+            title="이전 날짜"
+          >
+            <ChevronLeft size={20} />
+          </button>
+
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{
+              fontSize: 14,
+              fontWeight: 600,
+              color: isToday() ? 'var(--primary)' : 'var(--text-primary)'
+            }}>
+              {formatDateDisplay(selectedDate)}
+            </div>
+            {isToday() && (
+              <div style={{ fontSize: 11, color: 'var(--primary)' }}>
+                오늘
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={() => navigateDate('next')}
+            disabled={isToday()}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: isToday() ? 'not-allowed' : 'pointer',
+              padding: 4,
+              display: 'flex',
+              alignItems: 'center',
+              color: isToday() ? 'var(--text-disabled)' : 'var(--text-primary)',
+              borderRadius: 4,
+            }}
+            title="다음 날짜"
+          >
+            <ChevronRight size={20} />
+          </button>
+        </div>
+
+        {/* Quick Actions */}
+        {!isToday() && (
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <button
-              className="btn btn-card btn-3d"
-              disabled={saving || !cart || cart.length===0 || !cust}
-              onClick={async () => {
-                setSaving(true)
-                try {
-                  const company = String(cust?.companyCode || d.companyCode || 'TNT')
-                  const seq = await resolveSalesEmpSeq(company)
-                  const { payload } = buildPayload({ salesEmpSeq: seq })
-                  const headers: Record<string,string> = { 'Content-Type': 'application/json' }
-                  if (assigneeId) headers['X-ASSIGNEE-ID'] = String(assigneeId)
-                  const body: any = {
-                    companyCode: company,
-                    customerSeq: (cust?.customerSeq != null ? String(cust.customerSeq) : ''),
-                    customerName: String(d.customer || cust?.customerName || ''),
-                    assigneeId: assigneeId || '',
-                    regionGroup,
-                    requests,
-                    deliveryDueDate,
-                    createdBy: empName || '',
-                    custEmpName: String(d.manager || cust?.ownerName || ''),
-                    salesEmpSeq: seq || undefined,
-                    items: (cart||[]).map(it => ({
-                      itemSeq: String(it.itemSeq||''),
-                      itemName: it.itemName,
-                      itemSpec: it.itemSpec||'',
-                      qty: Number(it.qty)||0,
-                      itemStdUnit: it.itemStdUnit || undefined,
-                      companyType: it.companyType || undefined
-                    })),
-                  }
-                  const url = debugMode ? '/api/v1/orders?debug=true' : '/api/v1/orders'
-                  if (debugMode) headers['X-ERP-DEBUG'] = 'true'
-                  const rs = await fetch(url, { method:'POST', headers, body: JSON.stringify(body) })
-                  const resp = await rs.json().catch(()=> ({} as any))
-                  try { setLastSent(JSON.stringify(body, null, 2)) } catch {}
-                  try { setLastReceived(JSON.stringify(resp, null, 2)) } catch {}
-                  if (!rs.ok) throw new Error(resp?.error || `HTTP ${rs.status}`)
-                  if (resp?.debug) {
-                    setDebugPayload(resp.debugPayload)
-                    setNotice({ open:true, text:'디버그 모드: ERP·Slack 전송은 중단되었습니다.' })
-                    return
-                  }
-                  setOrderNo(String(resp?.orderTextNo || resp?.sendPayload?.ROOT?.data?.ROOT?.DataBlock1?.[0]?.OrderTextNo || ''))
-                  setNotice({ open:true, text:'주문 전송 완료' })
-                } catch (e:any) {
-                  setNotice({ open:true, text: e?.message || '주문 전송 중 오류가 발생했습니다' })
-                } finally { setSaving(false) }
-              }}
+              className="btn btn-secondary"
+              onClick={goToToday}
+              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, fontSize: 12 }}
             >
-              주문
+              <Calendar size={14} />
+              오늘
             </button>
           </div>
-          {/* 외부 가용재고 표 제거됨 */}
-        </div>
+        )}
       </div>
-      
-      {notice.open ? (
-        <div role="dialog" aria-modal="true" className="card" style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex: 70 }}>
-          <div className="card" style={{ background:'var(--panel)', padding: 12, border: '1px solid var(--border)', borderRadius: 10, minWidth: 260, maxWidth: '86vw' }}>
-            <div style={{ marginBottom: 8, fontWeight: 700, textAlign:'center' }}>{notice.text}</div>
-            <div style={{ display:'flex', justifyContent:'center', gap:8 }}>
-              <button className="btn btn-card btn-3d" onClick={()=> setNotice({ open:false, text:'' })}>확인</button>
+
+      {/* Order Count */}
+      <div style={{
+        padding: '8px 20px',
+        borderBottom: '1px solid var(--border)',
+        background: 'var(--bg-secondary)',
+        fontSize: 13,
+        color: 'var(--text-secondary)'
+      }}>
+        총 <strong style={{ color: 'var(--text-primary)' }}>{orders.length}</strong>건
+      </div>
+
+      {/* Order List */}
+      <div style={{ flex: 1, overflow: 'auto', padding: '12px 20px' }}>
+        {loading ? (
+          <div style={{
+            padding: 40,
+            textAlign: 'center',
+            color: 'var(--text-secondary)'
+          }}>
+            <RefreshCw size={24} className="animate-spin" style={{ marginBottom: 8 }} />
+            <div>불러오는 중...</div>
+          </div>
+        ) : orders.length === 0 ? (
+          <div style={{
+            padding: 40,
+            textAlign: 'center',
+            color: 'var(--text-secondary)',
+            background: 'var(--bg-secondary)',
+            borderRadius: 8,
+            border: '1px dashed var(--border)'
+          }}>
+            <FileText size={32} style={{ marginBottom: 8, opacity: 0.5 }} />
+            <div style={{ fontSize: 14, fontWeight: 500 }}>등록된 수주장이 없습니다</div>
+            <div style={{ fontSize: 12, marginTop: 4 }}>
+              {isToday() ? '오늘 등록된 수주장이 없습니다' : '해당 날짜에 등록된 수주장이 없습니다'}
             </div>
           </div>
-        </div>
-      ) : null}
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {orders.map((order) => (
+              <div
+                key={order.id}
+                style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  background: 'var(--panel)',
+                  overflow: 'hidden',
+                  transition: 'box-shadow 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow = 'none'
+                }}
+              >
+                {/* Order Header */}
+                <div
+                  onClick={() => toggleExpand(order.id)}
+                  style={{
+                    padding: '12px 16px',
+                    cursor: 'pointer',
+                    background: expandedId === order.id ? 'var(--bg-secondary)' : 'transparent',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {/* Circular T/D badge */}
+                      <span style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        background: (order.companyCode === 'DYS' || order.companyCode === 'D') ? '#6366f1' : '#10b981',
+                        color: '#fff',
+                        flexShrink: 0,
+                      }}>
+                        {(order.companyCode === 'DYS' || order.companyCode === 'D') ? 'D' : 'T'}
+                      </span>
+                      <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                        {order.orderTextNo || '-'}
+                      </span>
+                      <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>
+                        {order.customerName || '-'}
+                      </span>
+                      {order.deliveryDueDate && (
+                        <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 4 }}>
+                          납품요청일 : {order.deliveryDueDate.length === 8
+                            ? `${order.deliveryDueDate.slice(0, 4)}.${order.deliveryDueDate.slice(4, 6)}.${order.deliveryDueDate.slice(6, 8)}`
+                            : order.deliveryDueDate}
+                        </span>
+                      )}
+                    </div>
+                    <ChevronRight
+                      size={16}
+                      style={{
+                        transform: expandedId === order.id ? 'rotate(90deg)' : 'rotate(0deg)',
+                        transition: 'transform 0.2s',
+                        color: 'var(--text-secondary)'
+                      }}
+                    />
+                  </div>
 
-      {debugPayload ? (
-        <div role="dialog" aria-modal="true" className="card" style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.65)', display:'flex', alignItems:'center', justifyContent:'center', zIndex: 80 }}>
-          <div className="card" style={{ background:'var(--panel)', padding: 16, border: '1px solid var(--border)', borderRadius: 12, minWidth: 'min(90vw, 640px)', maxHeight: '80vh', overflow: 'auto' }}>
-            <div style={{ marginBottom: 12, fontWeight: 700 }}>디버그: 전송 직전 payload</div>
-            <div style={{ fontSize:12, marginBottom:16, whiteSpace:'pre-wrap', fontFamily:'monospace', maxHeight: '55vh', overflow:'auto', border:'1px dashed var(--border)', padding:8, background:'var(--panel-2)' }}>
-              {JSON.stringify(debugPayload, null, 2)}
-            </div>
-            <div style={{ display:'flex', justifyContent:'flex-end' }}>
-              <button className="btn btn-card btn-3d" onClick={() => setDebugPayload(null)}>닫기</button>
-            </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                    {order.orderText || '-'}
+                  </div>
+                </div>
+
+                {/* Order Details (Expanded) */}
+                {expandedId === order.id && (
+                  <div style={{
+                    padding: '12px 16px',
+                    borderTop: '1px solid var(--border)',
+                    background: 'var(--bg-secondary)',
+                    fontSize: 13
+                  }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: '8px 12px' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>담당자</span>
+                      <span>{order.salesEmpName || '-'}</span>
+
+                      <span style={{ color: 'var(--text-secondary)' }}>주문내용</span>
+                      <span style={{ whiteSpace: 'pre-wrap' }}>{order.orderText || '-'}</span>
+
+                      {order.orderRemark && (
+                        <>
+                          <span style={{ color: 'var(--text-secondary)' }}>요청사항</span>
+                          <span style={{ whiteSpace: 'pre-wrap' }}>{order.orderRemark}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
-        </div>
-      ) : null}
+        )}
+      </div>
 
-      
+      {/* Footer Info */}
+      <div style={{
+        padding: '8px 20px',
+        borderTop: '1px solid var(--border)',
+        background: 'var(--bg-secondary)',
+        fontSize: 11,
+        color: 'var(--text-tertiary)',
+        textAlign: 'center'
+      }}>
+        좌우 화살표로 날짜를 이동할 수 있습니다
+      </div>
     </div>
   )
 }

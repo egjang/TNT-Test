@@ -1,60 +1,51 @@
 import { useEffect, useState } from 'react'
 import { Search, RefreshCw, Plus } from 'lucide-react'
 
-export type InquiryRow = {
-  id: number
-  title?: string
-  customerName?: string | null
-  inquiryStatus?: string
-  assigneeName?: string | null
-  openedAt?: string
-  inquiryCategory?: string
-  severity?: string
+export type CompetitorRow = {
+  competitorId: number
+  competitorName: string
+  country?: string
+  homepage?: string
+  foundedYear?: number
+  description?: string
+  marketPositionCd?: string
+  distributionModel?: string
+  createdAt?: string
 }
 
-interface StandardInquiryListProps {
-  onSelect: (inquiry: InquiryRow) => void
+interface CompetitorListProps {
+  onSelect: (competitor: CompetitorRow) => void
   onCreate: () => void
   selectedId?: number | null
 }
 
-export function StandardInquiryList({ onSelect, onCreate, selectedId }: StandardInquiryListProps) {
-  const [items, setItems] = useState<InquiryRow[]>([])
+export function CompetitorList({ onSelect, onCreate, selectedId }: CompetitorListProps) {
+  const [items, setItems] = useState<CompetitorRow[]>([])
   const [loading, setLoading] = useState(false)
   const [searchText, setSearchText] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('')
+  const [positionFilter, setPositionFilter] = useState('')
+  const [distributionFilter, setDistributionFilter] = useState('')
 
   useEffect(() => {
     load()
     const handleReload = () => load()
-    window.addEventListener('tnt.sales.inquiry.reload' as any, handleReload)
-    return () => window.removeEventListener('tnt.sales.inquiry.reload' as any, handleReload)
+    window.addEventListener('tnt.sales.competitor.reload' as any, handleReload)
+    return () => window.removeEventListener('tnt.sales.competitor.reload' as any, handleReload)
   }, [])
 
   async function load() {
     setLoading(true)
     try {
-      const r = await fetch('/api/v1/inquiries')
+      const params = new URLSearchParams()
+      if (searchText) params.append('name', searchText)
+      if (positionFilter) params.append('marketPosition', positionFilter)
+      if (distributionFilter) params.append('distributionModel', distributionFilter)
+
+      const r = await fetch(`/api/v1/competitors?${params.toString()}`)
       if (r.ok) {
         const data = await r.json()
         if (Array.isArray(data)) {
-          const list = data.map((x: any) => ({
-            id: Number(x.id),
-            title: x.title,
-            customerName: x.customerName || x.customer_name,
-            inquiryStatus: x.inquiryStatus || x.inquiry_status || x.status,
-            assigneeName: x.assigneeName || x.assignee_name,
-            openedAt: x.openedAt || x.opened_at,
-            inquiryCategory: x.inquiryCategory || x.inquiry_category,
-            severity: x.severity,
-          }))
-          list.sort((a, b) => {
-            const da = a.openedAt ? new Date(a.openedAt).getTime() : 0
-            const db = b.openedAt ? new Date(b.openedAt).getTime() : 0
-            return db - da
-          })
-          setItems(list)
+          setItems(data)
         }
       }
     } catch (e) {
@@ -66,23 +57,23 @@ export function StandardInquiryList({ onSelect, onCreate, selectedId }: Standard
 
   const filteredItems = items.filter(item => {
     const matchSearch = searchText === '' ||
-      (item.title || '').toLowerCase().includes(searchText.toLowerCase()) ||
-      (item.customerName || '').toLowerCase().includes(searchText.toLowerCase())
-    const matchStatus = statusFilter === '' || item.inquiryStatus === statusFilter
-    const matchCategory = categoryFilter === '' || item.inquiryCategory === categoryFilter
-    return matchSearch && matchStatus && matchCategory
+      (item.competitorName || '').toLowerCase().includes(searchText.toLowerCase()) ||
+      (item.country || '').toLowerCase().includes(searchText.toLowerCase())
+    const matchPosition = positionFilter === '' || item.marketPositionCd === positionFilter
+    const matchDistribution = distributionFilter === '' || item.distributionModel === distributionFilter
+    return matchSearch && matchPosition && matchDistribution
   })
 
-  const getStatusStyle = (status?: string) => {
-    switch (status) {
-      case '신규접수':
-        return { background: 'var(--primary)', color: 'var(--on-accent)' }
-      case '확인 중':
-        return { background: 'var(--warning)', color: 'var(--on-accent)' }
-      case '완료':
-        return { background: 'var(--success)', color: 'var(--on-accent)' }
-      case '보류':
-        return { background: 'var(--error)', color: 'var(--on-accent)' }
+  const getPositionStyle = (position?: string) => {
+    switch (position) {
+      case '기술 리더':
+        return { background: '#ede9fe', color: '#7c3aed' }
+      case '품질 강자':
+        return { background: '#d1fae5', color: '#059669' }
+      case '가성비 중심':
+        return { background: '#fef3c7', color: '#d97706' }
+      case '초저가 진입자':
+        return { background: '#fee2e2', color: '#dc2626' }
       default:
         return { background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }
     }
@@ -90,8 +81,12 @@ export function StandardInquiryList({ onSelect, onCreate, selectedId }: Standard
 
   const handleReset = () => {
     setSearchText('')
-    setStatusFilter('')
-    setCategoryFilter('')
+    setPositionFilter('')
+    setDistributionFilter('')
+  }
+
+  const handleSearch = () => {
+    load()
   }
 
   return (
@@ -100,7 +95,7 @@ export function StandardInquiryList({ onSelect, onCreate, selectedId }: Standard
       <div style={{ padding: 16, borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 12 }}>
           <div>
-            <label style={{ display: 'block', fontSize: 12, marginBottom: 4, color: 'var(--text-secondary)' }}>제목/고객명</label>
+            <label style={{ display: 'block', fontSize: 12, marginBottom: 4, color: 'var(--text-secondary)' }}>경쟁사명</label>
             <div style={{ position: 'relative' }}>
               <input
                 type="text"
@@ -108,44 +103,45 @@ export function StandardInquiryList({ onSelect, onCreate, selectedId }: Standard
                 placeholder="검색..."
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 style={{ width: '100%', paddingLeft: 36 }}
               />
               <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', opacity: 0.5 }} />
             </div>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 12, marginBottom: 4, color: 'var(--text-secondary)' }}>상태</label>
+            <label style={{ display: 'block', fontSize: 12, marginBottom: 4, color: 'var(--text-secondary)' }}>시장 지위</label>
             <select
               className="input"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              value={positionFilter}
+              onChange={(e) => setPositionFilter(e.target.value)}
               style={{ width: '100%' }}
             >
               <option value="">전체</option>
-              <option value="신규접수">신규접수</option>
-              <option value="확인 중">확인 중</option>
-              <option value="완료">완료</option>
-              <option value="보류">보류</option>
+              <option value="기술 리더">기술 리더</option>
+              <option value="품질 강자">품질 강자</option>
+              <option value="가성비 중심">가성비 중심</option>
+              <option value="초저가 진입자">초저가 진입자</option>
             </select>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 12, marginBottom: 4, color: 'var(--text-secondary)' }}>분류</label>
+            <label style={{ display: 'block', fontSize: 12, marginBottom: 4, color: 'var(--text-secondary)' }}>유통 모델</label>
             <select
               className="input"
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
+              value={distributionFilter}
+              onChange={(e) => setDistributionFilter(e.target.value)}
               style={{ width: '100%' }}
             >
               <option value="">전체</option>
-              <option value="제품문의">제품문의</option>
-              <option value="재고/배송문의">재고/배송문의</option>
-              <option value="가격문의">가격문의</option>
-              <option value="기타문의">기타문의</option>
+              <option value="직판">직판</option>
+              <option value="총판">총판</option>
+              <option value="대리점">대리점</option>
+              <option value="온라인">온라인</option>
             </select>
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
             <button className="btn btn-secondary" onClick={handleReset}>초기화</button>
-            <button className="btn btn-primary" onClick={() => load()} disabled={loading}>
+            <button className="btn btn-primary" onClick={handleSearch} disabled={loading}>
               {loading ? '검색 중...' : '검색'}
             </button>
           </div>
@@ -178,55 +174,65 @@ export function StandardInquiryList({ onSelect, onCreate, selectedId }: Standard
                 <input type="checkbox" />
               </th>
               <th style={{ padding: '10px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)', width: 60 }}>No</th>
-              <th style={{ padding: '10px 12px', textAlign: 'center', borderBottom: '1px solid var(--border)', width: 100 }}>상태</th>
-              <th style={{ padding: '10px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>제목</th>
-              <th style={{ padding: '10px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)', width: 120 }}>분류</th>
-              <th style={{ padding: '10px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)', width: 150 }}>고객명</th>
-              <th style={{ padding: '10px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)', width: 120 }}>담당자</th>
-              <th style={{ padding: '10px 12px', textAlign: 'center', borderBottom: '1px solid var(--border)', width: 110 }}>등록일</th>
+              <th style={{ padding: '10px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>경쟁사명</th>
+              <th style={{ padding: '10px 12px', textAlign: 'left', borderBottom: '1px solid var(--border)', width: 100 }}>국가</th>
+              <th style={{ padding: '10px 12px', textAlign: 'center', borderBottom: '1px solid var(--border)', width: 100 }}>설립연도</th>
+              <th style={{ padding: '10px 12px', textAlign: 'center', borderBottom: '1px solid var(--border)', width: 120 }}>시장 지위</th>
+              <th style={{ padding: '10px 12px', textAlign: 'center', borderBottom: '1px solid var(--border)', width: 100 }}>유통 모델</th>
+              <th style={{ padding: '10px 12px', textAlign: 'center', borderBottom: '1px solid var(--border)', width: 100 }}>홈페이지</th>
             </tr>
           </thead>
           <tbody>
             {filteredItems.map((item, idx) => (
               <tr
-                key={item.id}
+                key={item.competitorId}
                 onClick={() => onSelect(item)}
                 style={{
                   cursor: 'pointer',
-                  background: selectedId === item.id ? 'var(--bg-secondary)' : 'transparent'
+                  background: selectedId === item.competitorId ? 'var(--bg-secondary)' : 'transparent'
                 }}
-                onMouseEnter={e => { if (selectedId !== item.id) e.currentTarget.style.background = 'var(--bg-secondary)' }}
-                onMouseLeave={e => { if (selectedId !== item.id) e.currentTarget.style.background = 'transparent' }}
+                onMouseEnter={e => { if (selectedId !== item.competitorId) e.currentTarget.style.background = 'var(--bg-secondary)' }}
+                onMouseLeave={e => { if (selectedId !== item.competitorId) e.currentTarget.style.background = 'transparent' }}
               >
                 <td style={{ padding: '10px 12px', textAlign: 'center', borderBottom: '1px solid var(--border)' }}>
                   <input type="checkbox" onClick={e => e.stopPropagation()} />
                 </td>
                 <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>{idx + 1}</td>
+                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', fontWeight: 500, color: 'var(--primary)' }}>
+                  {item.competitorName || '-'}
+                </td>
+                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
+                  {item.country || '-'}
+                </td>
+                <td style={{ padding: '10px 12px', textAlign: 'center', borderBottom: '1px solid var(--border)' }}>
+                  {item.foundedYear || '-'}
+                </td>
                 <td style={{ padding: '10px 12px', textAlign: 'center', borderBottom: '1px solid var(--border)' }}>
                   <span style={{
                     padding: '2px 8px',
                     borderRadius: 4,
                     fontSize: 11,
                     fontWeight: 500,
-                    ...getStatusStyle(item.inquiryStatus)
+                    ...getPositionStyle(item.marketPositionCd)
                   }}>
-                    {item.inquiryStatus || '-'}
+                    {item.marketPositionCd || '-'}
                   </span>
                 </td>
-                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', fontWeight: 500, color: 'var(--primary)' }}>
-                  {item.title || '-'}
-                </td>
-                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
-                  {item.inquiryCategory || '-'}
-                </td>
-                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
-                  {item.customerName || '-'}
-                </td>
-                <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
-                  {item.assigneeName || '-'}
+                <td style={{ padding: '10px 12px', textAlign: 'center', borderBottom: '1px solid var(--border)' }}>
+                  {item.distributionModel || '-'}
                 </td>
                 <td style={{ padding: '10px 12px', textAlign: 'center', borderBottom: '1px solid var(--border)' }}>
-                  {item.openedAt ? new Date(item.openedAt).toLocaleDateString() : '-'}
+                  {item.homepage ? (
+                    <a
+                      href={item.homepage}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      style={{ color: 'var(--primary)', textDecoration: 'none' }}
+                    >
+                      Link
+                    </a>
+                  ) : '-'}
                 </td>
               </tr>
             ))}
@@ -241,7 +247,7 @@ export function StandardInquiryList({ onSelect, onCreate, selectedId }: Standard
         </table>
       </div>
 
-      {/* 페이지네이션 (추후 구현) */}
+      {/* 페이지네이션 */}
       {filteredItems.length > 0 && (
         <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 4, borderTop: '1px solid var(--border)' }}>
           <button className="btn btn-ghost" style={{ padding: '4px 8px', minWidth: 32 }}>«</button>

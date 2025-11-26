@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Search, Database, Loader2, Table2, AlertCircle, CheckCircle } from 'lucide-react'
+import { Search, Database, Loader2, Table2, AlertCircle, CheckCircle, Coins } from 'lucide-react'
 
 type QueryResult = {
   question: string
@@ -103,25 +103,46 @@ export function VibeWorkspace() {
               자연어로 데이터베이스에 질문하세요
             </p>
           </div>
-          <button
-            onClick={() => setShowSchema(!showSchema)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '8px 16px',
-              background: showSchema ? '#3b82f6' : '#fff',
-              color: showSchema ? '#fff' : '#374151',
-              border: '1px solid #d1d5db',
-              borderRadius: 6,
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: 'pointer',
-            }}
-          >
-            <Database size={16} />
-            {showSchema ? '스키마 숨기기' : '스키마 보기'}
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => window.open('https://aistudio.google.com/usage?project=gen-lang-client-0711471737&timeRange=last-28-days', '_blank')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 16px',
+                background: '#fff',
+                color: '#374151',
+                border: '1px solid #d1d5db',
+                borderRadius: 6,
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >
+              <Coins size={16} />
+              토큰
+            </button>
+            <button
+              onClick={() => setShowSchema(!showSchema)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 16px',
+                background: showSchema ? '#3b82f6' : '#fff',
+                color: showSchema ? '#fff' : '#374151',
+                border: '1px solid #d1d5db',
+                borderRadius: 6,
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >
+              <Database size={16} />
+              {showSchema ? '스키마 숨기기' : '스키마 보기'}
+            </button>
+          </div>
         </div>
 
         {/* Search Form */}
