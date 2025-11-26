@@ -38,3 +38,6 @@ tnt_sales_dlv/backend/application.yml
 # 임시 파일
 *.tmp
 *.bak
+
+# 배포 디렉토리
+tnt_sales_dlv/
