@@ -383,19 +383,18 @@ export function SalesActivityForm({ bare = false, initial, editId, leadId, onSav
       return
     }
 
-    // Auto-fill actualStartAt with current time if status is "완료/취소/미방문" and actualStartAt is empty
+    // Validation: Require actualStartAt when status is "완료/취소/미방문"
     let finalActualStartAt = actualStartAt
     if (['완료', '취소', '미방문'].includes(activityStatus) && (!actualStartAt || actualStartAt.trim() === '')) {
-      const now = new Date()
-      const off = now.getTimezoneOffset()
-      const localNow = new Date(now.getTime() - off * 60000)
-      finalActualStartAt = localNow.toISOString().slice(0, 16)
-      setActualStartAt(finalActualStartAt)
+      setNotice({ open: true, text: '완료/취소/미방문 상태로 변경하려면 종료일시를 입력해주세요.' })
+      setBusy(false)
+      return
     }
 
     // Validation: If actualStartAt has value but status is NOT one of "완료/취소/미방문", show error
     if (finalActualStartAt && !['완료', '취소', '미방문'].includes(activityStatus)) {
       setNotice({ open: true, text: '종료일시가 입력된 경우 상태는 완료, 취소, 미방문 중 하나여야 합니다.' })
+      setBusy(false)
       return
     }
 
@@ -862,7 +861,7 @@ export function SalesActivityForm({ bare = false, initial, editId, leadId, onSav
           <div className="card" style={{ background:'var(--panel)', padding: 12, border: '1px solid var(--border)', borderRadius: 10, minWidth: 260, maxWidth: '86vw' }}>
             <div style={{ marginBottom: 8, fontWeight: 700, textAlign:'center' }}>{notice.text}</div>
             <div style={{ display:'flex', justifyContent:'center' }}>
-              <button className="btn btn-card btn-3d" onClick={()=> { setNotice({ open:false, text:'' }); try { onNoticeClose && onNoticeClose() } catch {} }}>확인</button>
+              <button className="btn btn-card btn-3d" onClick={()=> { setNotice({ open:false, text:'' }) }}>확인</button>
             </div>
           </div>
         </div>

@@ -111,7 +111,6 @@ export function SalesMgmtActivitiesRightPanel() {
         const r = getWeekRange(0)
         const p = new URLSearchParams()
         p.set('mineOnly', 'false')
-        p.set('onlyRoot', 'true')
         p.set('start', r.start.toISOString())
         p.set('end', r.end.toISOString())
 
@@ -227,7 +226,6 @@ export function SalesMgmtActivitiesRightPanel() {
         const p = new URLSearchParams()
         p.set('mineOnly', 'true')
         p.set('assigneeId', sel.assigneeId)
-        p.set('onlyRoot', 'true')
         p.set('start', sel.startIso)
         p.set('end', sel.endIso)
         const res = await fetch(`/api/v1/sales-activities?${p.toString()}`)
@@ -907,7 +905,6 @@ export function SalesMgmtActivitiesRightPanel() {
                   const p = new URLSearchParams()
                   p.set('mineOnly', 'true')
                   p.set('assigneeId', sel.assigneeId)
-                  p.set('onlyRoot', 'true')
                   p.set('start', sel.startIso)
                   p.set('end', sel.endIso)
                   fetch(`/api/v1/sales-activities?${p.toString()}`)

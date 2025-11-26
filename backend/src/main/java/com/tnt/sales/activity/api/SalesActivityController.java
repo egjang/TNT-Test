@@ -210,7 +210,6 @@ public class SalesActivityController {
                     "    FROM public.sales_activity sa, bounds b\n" +
                     "   WHERE sa.planned_start_at >= b.this_start\n" +
                     "     AND sa.planned_start_at < b.next_start\n" +
-                    "     AND sa.parent_activity_seq IS NULL\n" +
                     "   GROUP BY sa.sf_owner_id\n" +
                     "), nw AS (\n" +
                     "  SELECT sa.sf_owner_id AS owner,\n" +
@@ -219,7 +218,6 @@ public class SalesActivityController {
                     "    FROM public.sales_activity sa, bounds b\n" +
                     "   WHERE sa.planned_start_at >= b.next_start\n" +
                     "     AND sa.planned_start_at < b.next2_start\n" +
-                    "     AND sa.parent_activity_seq IS NULL\n" +
                     "   GROUP BY sa.sf_owner_id\n" +
                     ")\n" +
                     "SELECT e.emp_id, e.assignee_id, e.emp_name, e.dept_name,\n" +
@@ -277,7 +275,6 @@ public class SalesActivityController {
                         "    FROM public.sales_activity sa, params p\n" +
                         "   WHERE sa.planned_start_at >= p.this_start\n" +
                         "     AND sa.planned_start_at < (p.this_start + interval '7 day')\n" +
-                        "     AND sa.parent_activity_seq IS NULL\n" +
                         "   GROUP BY sa.sf_owner_id\n" +
                         "), nw AS (\n" +
                         "  SELECT sa.sf_owner_id AS owner,\n" +
@@ -286,7 +283,6 @@ public class SalesActivityController {
                         "    FROM public.sales_activity sa, params p\n" +
                         "   WHERE sa.planned_start_at >= (p.this_start + interval '7 day')\n" +
                         "     AND sa.planned_start_at < (p.this_start + interval '14 day')\n" +
-                        "     AND sa.parent_activity_seq IS NULL\n" +
                         "   GROUP BY sa.sf_owner_id\n" +
                         ")\n" +
                         "SELECT e.emp_id, e.assignee_id, e.emp_name, e.dept_name,\n" +
@@ -377,6 +373,19 @@ public class SalesActivityController {
                     .body(Map.of("error", "필수 항목 누락: sfOwnerId, activityType, activityStatus"));
         }
 
+        // Validation: If status is "완료/취소/미방문", actualStartAt is required
+        if (req.activityStatus != null) {
+            String status = req.activityStatus.trim().toLowerCase();
+            if (status.equals("완료") || status.equals("completed") ||
+                status.equals("취소") || status.equals("canceled") ||
+                status.equals("미방문") || status.equals("no_show")) {
+                if (req.actualStartAt == null || req.actualStartAt.isBlank()) {
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(Map.of("error", "완료/취소/미방문 상태로 등록하려면 종료일시(actualStartAt)가 필요합니다."));
+                }
+            }
+        }
+
         // nodb profile: return stub id
         for (String p : env.getActiveProfiles()) {
             if ("nodb".equalsIgnoreCase(p)) {
@@ -428,6 +437,19 @@ public class SalesActivityController {
         for (String p : env.getActiveProfiles()) {
             if ("nodb".equalsIgnoreCase(p)) {
                 return ResponseEntity.ok(Map.of("id", id));
+            }
+        }
+
+        // Validation: If status is "완료" (completed), actualStartAt is required
+        if (req.activityStatus != null) {
+            String status = req.activityStatus.trim().toLowerCase();
+            if (status.equals("완료") || status.equals("completed") ||
+                status.equals("취소") || status.equals("canceled") ||
+                status.equals("미방문") || status.equals("no_show")) {
+                if (req.actualStartAt == null || req.actualStartAt.isBlank()) {
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(Map.of("error", "완료/취소/미방문 상태로 변경하려면 종료일시(actualStartAt)가 필요합니다."));
+                }
             }
         }
 

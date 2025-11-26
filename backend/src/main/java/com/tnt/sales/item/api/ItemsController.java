@@ -111,11 +111,16 @@ import java.util.Map;
         String stdUnitExpr = hasStdUnit ? "coalesce(nullif(trim(" + colStdUnit + "), ''), '미지정')" : "'미지정'";
         String itemUnitExpr = hasItemUnit ? "coalesce(nullif(trim(" + colItemUnit + "), ''), '미지정')" : "'미지정'";
 
-        String activeFilter = hasActive ? (" WHERE " + colActive + " = '사용'") : "";
+        String colItemName = env.getProperty("app.item.columns.item_name", "item_name");
 
         try {
-            String sql = "SELECT " + salesUnitSeqExpr + " AS sales_mgmt_unit_seq, " + salesUnitExpr + " AS sales_mgmt_unit, " + stdUnitExpr + " AS item_std_unit, " + itemUnitExpr + " AS item_unit, COUNT(*) AS item_count " +
-                    "FROM " + tbl + activeFilter + " " +
+            // LEFT JOIN with temp_unit_modify to count missing newStdUnit
+            String sql = "SELECT " + salesUnitSeqExpr + " AS sales_mgmt_unit_seq, " + salesUnitExpr + " AS sales_mgmt_unit, " +
+                    stdUnitExpr + " AS item_std_unit, " + itemUnitExpr + " AS item_unit, COUNT(*) AS item_count, " +
+                    "SUM(CASE WHEN t.새표준단위 IS NULL OR TRIM(t.새표준단위) = '' THEN 1 ELSE 0 END) AS missing_count " +
+                    "FROM " + tbl + " i " +
+                    "LEFT JOIN temp_unit_modify t ON i." + colItemName + " = t.품목명" +
+                    (hasActive ? (" WHERE i." + colActive + " = '사용'") : "") + " " +
                     "GROUP BY 1,2,3,4 " +
                     "ORDER BY sales_mgmt_unit, item_unit, item_std_unit";
 
@@ -126,6 +131,7 @@ import java.util.Map;
                 m.put("itemStdUnit", rs.getString(3));
                 m.put("itemUnit", rs.getString(4));
                 m.put("itemCount", rs.getLong(5));
+                m.put("missingCount", rs.getLong(6));
                 return m;
             });
             return ResponseEntity.ok(rows);
@@ -185,8 +191,16 @@ import java.util.Map;
         }
         whereClause.append(activeFilter);
 
-        String sql = "SELECT " + colItemSeq + " AS item_seq, " + colItemName + " AS item_name, " + stdUnitExpr + " AS item_std_unit, " + itemUnitExpr + " AS item_unit, " + salesUnitSeqExpr + " AS sales_mgmt_unit_seq " +
-                "FROM " + tbl + whereClause.toString() + " ORDER BY " + salesUnitCoalesced + " ASC, " + colItemName + " ASC";
+        // LEFT JOIN with temp_unit_modify to get 새표준단위
+        String sql = "SELECT i." + colItemSeq + " AS item_seq, i." + colItemName + " AS item_name, " +
+                stdUnitExpr.replace(colStdUnit, "i." + colStdUnit).replace("NULL::text", "NULL::text") + " AS item_std_unit, " +
+                itemUnitExpr.replace(colItemUnit, "i." + colItemUnit).replace("NULL::text", "NULL::text") + " AS item_unit, " +
+                salesUnitSeqExpr.replace(colSalesUnitSeq, "i." + colSalesUnitSeq) + " AS sales_mgmt_unit_seq, " +
+                "t.새표준단위 AS new_std_unit " +
+                "FROM " + tbl + " i " +
+                "LEFT JOIN temp_unit_modify t ON i." + colItemName + " = t.품목명" +
+                whereClause.toString().replace(tbl, "i") +
+                " ORDER BY " + salesUnitCoalesced.replace(colSalesUnit, "i." + colSalesUnit).replace("NULL::text", "NULL::text") + " ASC, i." + colItemName + " ASC";
 
         try {
             List<Map<String, Object>> rows = jdbc.query(sql, ps -> {
@@ -205,12 +219,46 @@ import java.util.Map;
                 m.put("itemStdUnit", rs.getString(3));
                 m.put("itemUnit", rs.getString(4));
                 m.put("salesMgmtUnitSeq", rs.getObject(5));
+                m.put("newStdUnit", rs.getString(6));
                 m.put("salesMgmtUnit", salesMgmtUnit);
                 return m;
             });
             return ResponseEntity.ok(rows);
         } catch (Exception e) {
             return ResponseEntity.status(500).body(Map.of("error", "unit_usage_items_query_failed"));
+        }
+    }
+
+    static class UnitModifyUpsertRequest {
+        public String itemName;      // 품목명
+        public String salesUnit;     // 판매단위
+        public String stdUnit;       // 표준단위
+        public String newStdUnit;    // 새표준단위
+    }
+
+    @PostMapping("/unit-modify/upsert")
+    public ResponseEntity<?> upsertUnitModify(@RequestBody List<UnitModifyUpsertRequest> requests) {
+        if (requests == null || requests.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "empty_request"));
+        }
+
+        try {
+            String upsertSql = "INSERT INTO temp_unit_modify (품목명, 판매단위, 표준단위, 새표준단위) " +
+                    "VALUES (?, ?, ?, ?) " +
+                    "ON CONFLICT (품목명) DO UPDATE SET " +
+                    "판매단위 = EXCLUDED.판매단위, " +
+                    "표준단위 = EXCLUDED.표준단위, " +
+                    "새표준단위 = EXCLUDED.새표준단위";
+
+            int updated = 0;
+            for (UnitModifyUpsertRequest req : requests) {
+                jdbc.update(upsertSql, req.itemName, req.salesUnit, req.stdUnit, req.newStdUnit);
+                updated++;
+            }
+
+            return ResponseEntity.ok(Map.of("success", true, "updated", updated));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("error", "upsert_failed", "message", e.getMessage()));
         }
     }
 

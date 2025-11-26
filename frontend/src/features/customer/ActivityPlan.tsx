@@ -466,7 +466,6 @@ export function ActivityPlan() {
       url.searchParams.set('mineOnly', 'true')
       url.searchParams.set('start', s.toISOString())
       url.searchParams.set('end', e.toISOString())
-      url.searchParams.set('onlyRoot', 'true')
       url.searchParams.set('_t', Date.now().toString()) // Cache buster
       const res = await fetch(url.toString(), { cache: 'no-cache' })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -1190,10 +1189,10 @@ export function ActivityPlan() {
                          textOverflow: 'ellipsis',
                          textAlign: 'left'
                        }}
-                       title={ev.subject || ''}
+                       title={`${ev.customerName || '(거래처명 없음)'} - ${ev.subject || '(제목 없음)'}`}
                   >
                     <span style={{ color: labelColor, fontWeight:700, marginRight:4 }}>{label}</span>
-                    <span>{ev.subject || '(제목 없음)'}</span>
+                    <span>{ev.customerName || '(거래처명 없음)'}</span>
                   </div>
                 )
               })
