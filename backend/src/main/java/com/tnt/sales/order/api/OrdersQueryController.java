@@ -81,6 +81,7 @@ public class OrdersQueryController {
             @RequestParam(value = "salesEmpSeq", required = false) Long salesEmpSeq,
             @RequestParam(value = "tntSalesEmpSeq", required = false) Long tntSalesEmpSeq,
             @RequestParam(value = "dysSalesEmpSeq", required = false) Long dysSalesEmpSeq,
+            @RequestParam(value = "custName", required = false) String custName,
             @RequestParam(value = "offset", required = false, defaultValue = "0") int offset,
             @RequestParam(value = "limit", required = false, defaultValue = "100") int limit
     ) {
@@ -93,7 +94,7 @@ public class OrdersQueryController {
 
             // Handle ALL: UNION TNT and DYS
             if ("ALL".equals(companyUpper)) {
-                return handleUnionQuery(fromDate, toDate, tntSalesEmpSeq, dysSalesEmpSeq, offset, limit);
+                return handleUnionQuery(fromDate, toDate, tntSalesEmpSeq, dysSalesEmpSeq, custName, offset, limit);
             }
 
             String db = "TNT";
@@ -101,6 +102,17 @@ public class OrdersQueryController {
             // Parse input dates (YY-MM-DD) if provided
             LocalDate from = parseYyMmDd(fromDate);
             LocalDate to = parseYyMmDd(toDate);
+
+            // custName이 제공된 경우, PostgreSQL에서 먼저 customer_seq 목록 조회 (해당 회사 타입만)
+            Set<Long> custSeqFilter = null;
+            if (custName != null && !custName.trim().isEmpty()) {
+                custSeqFilter = findCustomerSeqsByName(custName.trim(), db);
+                // 검색 결과가 없으면 빈 결과 반환
+                if (custSeqFilter.isEmpty()) {
+                    return ResponseEntity.ok(new ArrayList<>());
+                }
+            }
+
             String[] orderVariants = new String[] {
                     "ORDER BY LastDateTime DESC",
                     "ORDER BY OrderTextDate DESC, OrderTextNo DESC",
@@ -123,6 +135,10 @@ public class OrdersQueryController {
                         where += (where.isEmpty()?" WHERE ":" AND ") + "SalesEmpSeq = ?";
                         args.add(salesEmpSeq);
                     }
+                    // 거래처 필터 적용 (custSeqFilter가 제공된 경우)
+                    if (custSeqFilter != null && !custSeqFilter.isEmpty()) {
+                        where += (where.isEmpty() ? " WHERE " : " AND ") + "CustSeq IN " + joinIds(custSeqFilter);
+                    }
                     // Use OFFSET/FETCH for paging; ensure ORDER BY exists
                     String ordClause = (ord == null || ord.isBlank()) ? "ORDER BY 1" : ord;
                     String sql = ("SELECT * FROM " + db + ".dbo.tnt_TSLOrderText " + where + " " + ordClause + " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY").trim();
@@ -135,6 +151,7 @@ public class OrdersQueryController {
             }
             if (rows == null) throw lastErr != null ? lastErr : new RuntimeException("unknown_query_error");
             // Enrich with names from Postgres (customer and employee), then filter columns
+            // enrichWithPg에서 각 행의 실제 company_type을 설정함
             List<Map<String,Object>> enriched = enrichWithPg(rows, db);
             List<Map<String,Object>> out = filterColumns(enriched);
             return ResponseEntity.ok(out);
@@ -149,15 +166,33 @@ public class OrdersQueryController {
     /**
      * Handle ALL company query: UNION TNT and DYS databases
      * tntSalesEmpSeq/dysSalesEmpSeq가 전달되면 각 회사별 담당자 필터 적용
+     * custName이 전달되면 거래처명으로 필터링 (PostgreSQL customer 테이블에서 customer_seq 조회 후 MSSQL 필터)
      */
-    private ResponseEntity<?> handleUnionQuery(String fromDate, String toDate, Long tntSalesEmpSeq, Long dysSalesEmpSeq, int offset, int limit) {
+    private ResponseEntity<?> handleUnionQuery(String fromDate, String toDate, Long tntSalesEmpSeq, Long dysSalesEmpSeq, String custName, int offset, int limit) {
         try {
             LocalDate from = parseYyMmDd(fromDate);
             LocalDate to = parseYyMmDd(toDate);
 
-            // Query both TNT and DYS with their respective emp_seq (null if not provided)
-            List<Map<String, Object>> tntRows = queryCompanyData("TNT", from, to, tntSalesEmpSeq, 0, limit * 2);
-            List<Map<String, Object>> dysRows = queryCompanyData("DYS", from, to, dysSalesEmpSeq, 0, limit * 2);
+            // custName이 제공된 경우, PostgreSQL에서 먼저 customer_seq 목록 조회 (회사별 분리)
+            Set<Long> tntCustSeqFilter = null;
+            Set<Long> dysCustSeqFilter = null;
+            if (custName != null && !custName.trim().isEmpty()) {
+                Map<String, Set<Long>> custSeqByCompany = findCustomerSeqsByNameByCompany(custName.trim());
+                tntCustSeqFilter = custSeqByCompany.get("TNT");
+                dysCustSeqFilter = custSeqByCompany.get("DYS");
+                // 검색 결과가 둘 다 없으면 빈 결과 반환
+                if (tntCustSeqFilter.isEmpty() && dysCustSeqFilter.isEmpty()) {
+                    return ResponseEntity.ok(new ArrayList<>());
+                }
+            }
+
+            // Query both TNT and DYS with their respective emp_seq and custSeq filters
+            List<Map<String, Object>> tntRows = (tntCustSeqFilter == null || !tntCustSeqFilter.isEmpty())
+                    ? queryCompanyData("TNT", from, to, tntSalesEmpSeq, tntCustSeqFilter, 0, limit * 2)
+                    : new ArrayList<>();
+            List<Map<String, Object>> dysRows = (dysCustSeqFilter == null || !dysCustSeqFilter.isEmpty())
+                    ? queryCompanyData("DYS", from, to, dysSalesEmpSeq, dysCustSeqFilter, 0, limit * 2)
+                    : new ArrayList<>();
 
             // Add CompanyType field to distinguish rows
             for (Map<String, Object> row : tntRows) {
@@ -190,6 +225,7 @@ public class OrdersQueryController {
 
             // Enrich with PG data (we need to handle both TNT and DYS)
             List<Map<String, Object>> enriched = enrichWithPgUnion(paged);
+
             List<Map<String, Object>> out = filterColumns(enriched);
 
             return ResponseEntity.ok(out);
@@ -204,7 +240,7 @@ public class OrdersQueryController {
     /**
      * Query single company database
      */
-    private List<Map<String, Object>> queryCompanyData(String db, LocalDate from, LocalDate to, Long salesEmpSeq, int offset, int limit) {
+    private List<Map<String, Object>> queryCompanyData(String db, LocalDate from, LocalDate to, Long salesEmpSeq, Set<Long> custSeqFilter, int offset, int limit) {
         // 날짜 필터용 컬럼명 변형 시도
         String[] dateColVariants = new String[] { "OrderTextDate", "OrderTextDat", "LastDateTime" };
         String[] orderVariants = new String[] {
@@ -236,6 +272,10 @@ public class OrdersQueryController {
                         where += (where.isEmpty() ? " WHERE " : " AND ") + "SalesEmpSeq = ?";
                         args.add(salesEmpSeq);
                     }
+                    // 거래처 필터 적용 (custSeqFilter가 제공된 경우)
+                    if (custSeqFilter != null && !custSeqFilter.isEmpty()) {
+                        where += (where.isEmpty() ? " WHERE " : " AND ") + "CustSeq IN " + joinIds(custSeqFilter);
+                    }
 
                     String ordClause = (ord == null || ord.isBlank()) ? "ORDER BY 1" : ord;
                     String sql = ("SELECT * FROM " + db + ".dbo.tnt_TSLOrderText " + where + " " + ordClause + " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY").trim();
@@ -248,6 +288,80 @@ public class OrdersQueryController {
             }
         }
         return new ArrayList<>();
+    }
+
+    /**
+     * PostgreSQL에서 거래처명으로 customer_seq 목록 조회 (company_type별로 분리)
+     * 토큰 기반 AND 검색 (모든 토큰이 포함된 거래처만 반환)
+     * @return Map with keys "TNT" and "DYS", each containing Set<Long> of customer_seq
+     */
+    private Map<String, Set<Long>> findCustomerSeqsByNameByCompany(String custName) {
+        Map<String, Set<Long>> result = new HashMap<>();
+        result.put("TNT", new HashSet<>());
+        result.put("DYS", new HashSet<>());
+
+        if (custName == null || custName.trim().isEmpty()) {
+            return result;
+        }
+
+        try {
+            // 토큰으로 분리하여 LIKE 조건 생성
+            String[] tokens = custName.trim().toLowerCase().split("\\s+");
+            StringBuilder whereClause = new StringBuilder();
+            List<Object> args = new ArrayList<>();
+
+            for (int i = 0; i < tokens.length; i++) {
+                if (i > 0) whereClause.append(" AND ");
+                whereClause.append("LOWER(customer_name) LIKE ?");
+                args.add("%" + tokens[i] + "%");
+            }
+
+            String sql = "SELECT customer_seq, UPPER(company_type) AS company_type FROM public.customer WHERE " + whereClause.toString();
+            List<Map<String, Object>> rows = pg.queryForList(sql, args.toArray());
+
+            for (Map<String, Object> row : rows) {
+                Object seq = row.get("customer_seq");
+                String companyType = String.valueOf(row.get("company_type")).toUpperCase();
+                if (seq != null) {
+                    try {
+                        Long seqVal = Long.parseLong(String.valueOf(seq));
+                        if ("TNT".equals(companyType)) {
+                            result.get("TNT").add(seqVal);
+                        } else if ("DYS".equals(companyType)) {
+                            result.get("DYS").add(seqVal);
+                        }
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // 오류 발생 시 빈 맵 반환
+        }
+
+        return result;
+    }
+
+    /**
+     * PostgreSQL에서 거래처명으로 customer_seq 목록 조회 (단일 회사용)
+     */
+    private Set<Long> findCustomerSeqsByName(String custName, String companyType) {
+        if (custName == null || custName.trim().isEmpty()) {
+            return new HashSet<>();
+        }
+
+        Map<String, Set<Long>> byCompany = findCustomerSeqsByNameByCompany(custName);
+
+        if ("TNT".equalsIgnoreCase(companyType)) {
+            return byCompany.get("TNT");
+        } else if ("DYS".equalsIgnoreCase(companyType)) {
+            return byCompany.get("DYS");
+        } else {
+            // ALL인 경우 모두 합침
+            Set<Long> all = new HashSet<>();
+            all.addAll(byCompany.get("TNT"));
+            all.addAll(byCompany.get("DYS"));
+            return all;
+        }
     }
 
     /**
@@ -394,19 +508,24 @@ public class OrdersQueryController {
             Long s = readLong(r, "SalesEmpSeq");
             if (s != null) empSeqs.add(s);
         }
-        // Build maps from PG
+        // Build maps from PG (including company_type)
         Map<Long,String> custMap = new HashMap<>();
         Map<Long,String> regionGroupMap = new HashMap<>();
+        Map<Long,String> custCompanyTypeMap = new HashMap<>();
         if (!custIds.isEmpty()) {
             String in = joinIds(custIds);
             try {
-                String sql = "SELECT customer_seq, customer_name, addr_province_name, addr_city_name FROM public.customer WHERE customer_seq IN " + in;
+                String sql = "SELECT customer_seq, customer_name, addr_province_name, addr_city_name, UPPER(company_type) AS company_type FROM public.customer WHERE customer_seq IN " + in;
                 pg.query(sql, rs -> {
                     long id = rs.getLong("customer_seq");
                     String name = rs.getString("customer_name");
                     String province = rs.getString("addr_province_name");
                     String city = rs.getString("addr_city_name");
+                    String companyType = rs.getString("company_type");
                     custMap.put(id, name);
+                    if (companyType != null && !companyType.trim().isEmpty()) {
+                        custCompanyTypeMap.put(id, companyType.trim().toUpperCase());
+                    }
                     // Build region group from province and city
                     List<String> parts = new ArrayList<>();
                     if (province != null && !province.trim().isEmpty()) parts.add(province.trim());
@@ -433,6 +552,7 @@ public class OrdersQueryController {
         List<Map<String,Object>> out = new ArrayList<>(rows.size());
         for (Map<String,Object> r : rows) {
             Map<String,Object> m = new LinkedHashMap<>();
+            Long custId = readLong(r, "CustSeq");
             for (Map.Entry<String,Object> e : r.entrySet()) {
                 String k = e.getKey();
                 Object v = e.getValue();
@@ -451,6 +571,13 @@ public class OrdersQueryController {
                 } else {
                     m.put(k, v);
                 }
+            }
+            // Add CompanyType from customer's actual company_type
+            if (custId != null && custCompanyTypeMap.containsKey(custId)) {
+                m.put("CompanyType", custCompanyTypeMap.get(custId));
+            } else {
+                // Fallback to db parameter if customer company_type not found
+                m.put("CompanyType", db);
             }
             out.add(m);
         }

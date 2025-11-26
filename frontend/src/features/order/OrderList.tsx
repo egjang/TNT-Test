@@ -164,18 +164,20 @@ export function OrderList() {
       url.searchParams.set('company', company)
       if (fNorm) url.searchParams.set('fromDate', fNorm)
       if (tNorm) url.searchParams.set('toDate', tNorm)
+      // 거래처명 파라미터 전달 (백엔드에서 필터링)
+      const hasCustQuery = custQuery.trim().length > 0
+      if (hasCustQuery) {
+        url.searchParams.set('custName', custQuery.trim())
+      }
       if (scope === 'mine') {
-        const hasCustQuery = custQuery.trim().length > 0
         if (company === 'ALL') {
-          if (hasCustQuery) {
-            // ALL + 내수주 + 거래처명 있음 → emp_seq 전달 안함 (TNT + DYS 전체 조회)
-            // 거래처명으로 클라이언트 필터링
-          } else {
+          if (!hasCustQuery) {
             // ALL + 내수주 + 거래처명 없음 → 각 회사별 emp_seq 전달
             const { tntEmpSeq, dysEmpSeq } = await resolveMyEmpSeqBoth()
             if (tntEmpSeq) url.searchParams.set('tntSalesEmpSeq', tntEmpSeq)
             if (dysEmpSeq) url.searchParams.set('dysSalesEmpSeq', dysEmpSeq)
           }
+          // ALL + 거래처명 있음 → emp_seq 전달 안함, custName으로 백엔드 필터링
         } else {
           // TNT 또는 DYS → 해당 회사의 emp_seq 전달
           const seq = await resolveMyEmpSeqForCompany(company)
@@ -185,25 +187,8 @@ export function OrderList() {
       const res = await fetch(url.toString(), { cache: 'no-store' })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json().catch(() => [])
-      let arr = Array.isArray(data) ? data : []
-      // Client-side filter: customer name tokens (AND of LIKE)
-      const q = custQuery.trim()
-      if (q) {
-        const tokens = q.split(/\s+/).map((s) => s.toLowerCase())
-        arr = arr.filter((r) => {
-          const name = (() => {
-            // Prefer replaced CustSeq (backend enrichment), fallback to common name keys
-            const entries = Object.entries(r)
-            let v: any = null
-            for (const [k, val] of entries) {
-              const kk = String(k).toLowerCase()
-              if (kk === 'custseq' || kk === 'custname' || kk === 'customername' || kk === 'customer_name') { v = val; break }
-            }
-            return String(v ?? '')
-          })().toLowerCase()
-          return tokens.every((t) => name.includes(t))
-        })
-      }
+      const arr = Array.isArray(data) ? data : []
+      // 클라이언트 필터링 제거 - 백엔드에서 custName 필터링 수행
       setRows(arr)
     } catch (e:any) {
       setError(e?.message || '조회 실패')
@@ -401,7 +386,8 @@ export function OrderList() {
                       const isCustCol = /^(CustSeq|CustName|CustomerName|customer_name)$/i.test(c) || headerLabel(c) === '거래처명'
                       const cellValue = String(r?.[c] ?? '')
 
-                      if (isCustCol && company === 'ALL' && companyTypeValue) {
+                      // 거래처 컬럼에 회사 아이콘 표시 (백엔드에서 전달된 CompanyType 사용)
+                      if (isCustCol && companyTypeValue) {
                         const isTNT = companyTypeValue.includes('TNT')
                         const isDYS = companyTypeValue.includes('DYS')
                         const icon = isTNT ? 'T' : isDYS ? 'D' : ''
