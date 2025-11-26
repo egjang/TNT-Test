@@ -32,12 +32,26 @@
   /* blue-600 */
   --on-accent: #ffffff;
 
+  /* Standard UI Aliases - for component documentation */
+  --primary: #3b82f6;
+  /* alias for --accent */
+  --secondary: #64748b;
+  /* slate-500 */
+  --bg-primary: #ffffff;
+  /* alias for --panel */
+  --bg-secondary: #f1f5f9;
+  /* alias for --panel-2 */
+  --text-primary: #0f172a;
+  /* alias for --text */
+
   --sum-accent: #1d4ed8;
   /* blue-700 */
 
   /* Borders & Dividers */
   --border: #e2e8f0;
   /* slate-200 */
+  --border-input: #c7d2fe;
+  /* indigo-200 - pastel input border */
   --resizer: #cbd5e1;
   /* slate-300 */
 
@@ -120,6 +134,8 @@
 
   --border: #334155;
   /* slate-700 */
+  --border-input: #6366f1;
+  /* indigo-500 - pastel input border for dark */
   --resizer: #475569;
   /* slate-600 */
 
@@ -137,6 +153,18 @@
 
   --glass-bg: rgba(30, 41, 59, 0.7);
   --glass-border: rgba(255, 255, 255, 0.1);
+
+  /* Standard UI Aliases - for component documentation (dark) */
+  --primary: #60a5fa;
+  /* blue-400 */
+  --secondary: #94a3b8;
+  /* slate-400 */
+  --bg-primary: #1e293b;
+  /* alias for --panel */
+  --bg-secondary: #334155;
+  /* alias for --panel-2 */
+  --text-primary: #f8fafc;
+  /* alias for --text */
 }
 
 /* Animations */
@@ -226,6 +254,8 @@
 
   --border: #334155;
   /* slate-700 */
+  --border-input: #6366f1;
+  /* indigo-500 - pastel input border for dark */
   --resizer: #475569;
   /* slate-600 */
 
@@ -247,6 +277,18 @@
   /* slate-600 */
   --btn-border-hover: #64748b;
   /* slate-500 */
+
+  /* Standard UI Aliases - for component documentation (dark) */
+  --primary: #60a5fa;
+  /* blue-400 */
+  --secondary: #94a3b8;
+  /* slate-400 */
+  --bg-primary: #1e293b;
+  /* alias for --panel */
+  --bg-secondary: #334155;
+  /* alias for --panel-2 */
+  --text-primary: #f8fafc;
+  /* alias for --text */
 }
 
 * {
@@ -272,6 +314,54 @@ textarea,
 select,
 button {
   font: inherit;
+}
+
+/* Pastel border for input/select/textarea elements */
+input,
+textarea,
+select {
+  border-color: var(--border-input);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--accent);
+}
+
+/* .input class for standard UI components */
+.input {
+  padding: 8px 12px;
+  border: 1px solid var(--border-input);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+/* .select class for standard UI components */
+.select {
+  padding: 8px 12px;
+  border: 1px solid var(--border-input);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  cursor: pointer;
+}
+
+.select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
 /* Show scrollbars by default (for horizontal overflow in tables) */
@@ -1572,6 +1662,30 @@ button {
   color: var(--muted);
 }
 
+.badge-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-accent);
+}
+
+.badge-success {
+  background: var(--success);
+  border-color: var(--success);
+  color: var(--on-accent);
+}
+
+.badge-warning {
+  background: var(--warning);
+  border-color: var(--warning);
+  color: var(--on-accent);
+}
+
+.badge-error {
+  background: var(--error);
+  border-color: var(--error);
+  color: var(--on-accent);
+}
+
 .card {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -1802,6 +1916,39 @@ textarea:disabled,
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Primary button */
+.btn-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-accent);
+}
+
+.btn-primary:hover {
+  filter: brightness(1.1);
+}
+
+/* Secondary button */
+.btn-secondary {
+  background: var(--bg-secondary);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.btn-secondary:hover {
+  background: var(--hover-bg);
+}
+
+/* Error/Danger button */
+.btn-error {
+  background: var(--error);
+  border-color: var(--error);
+  color: var(--on-accent);
+}
+
+.btn-error:hover {
+  filter: brightness(1.1);
 }
 
 /* Icon-only button */

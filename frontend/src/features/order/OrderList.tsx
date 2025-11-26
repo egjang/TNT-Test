@@ -42,6 +42,26 @@ export function OrderList() {
     } catch { return '' }
   }
 
+  // Resolve both TNT and DYS emp_seq for ALL company query
+  async function resolveMyEmpSeqBoth(): Promise<{ tntEmpSeq: string; dysEmpSeq: string }> {
+    try {
+      const aid = (typeof window !== 'undefined') ? (localStorage.getItem('tnt.sales.assigneeId') || '') : ''
+      const eid = (typeof window !== 'undefined') ? (localStorage.getItem('tnt.sales.empId') || '') : ''
+      const p = new URLSearchParams()
+      if (aid) p.set('assigneeId', aid)
+      if (eid) p.set('empId', eid)
+      const rs = await fetch(`/api/v1/employee/by-assignee?${p.toString()}`, { cache: 'no-store' })
+      if (!rs.ok) return { tntEmpSeq: '', dysEmpSeq: '' }
+      const j = await rs.json().catch(()=>null as any)
+      const tntSeq = j?.tnt_emp_seq
+      const dysSeq = j?.dys_emp_seq
+      return {
+        tntEmpSeq: (tntSeq != null && String(tntSeq)) ? String(tntSeq) : '',
+        dysEmpSeq: (dysSeq != null && String(dysSeq)) ? String(dysSeq) : ''
+      }
+    } catch { return { tntEmpSeq: '', dysEmpSeq: '' } }
+  }
+
   function normalizeYyMmDd(input: string): string | null {
     if (!input) return ''
     let s = String(input).trim()
@@ -145,8 +165,22 @@ export function OrderList() {
       if (fNorm) url.searchParams.set('fromDate', fNorm)
       if (tNorm) url.searchParams.set('toDate', tNorm)
       if (scope === 'mine') {
-        const seq = await resolveMyEmpSeqForCompany(company)
-        if (seq) url.searchParams.set('salesEmpSeq', seq)
+        const hasCustQuery = custQuery.trim().length > 0
+        if (company === 'ALL') {
+          if (hasCustQuery) {
+            // ALL + 내수주 + 거래처명 있음 → emp_seq 전달 안함 (TNT + DYS 전체 조회)
+            // 거래처명으로 클라이언트 필터링
+          } else {
+            // ALL + 내수주 + 거래처명 없음 → 각 회사별 emp_seq 전달
+            const { tntEmpSeq, dysEmpSeq } = await resolveMyEmpSeqBoth()
+            if (tntEmpSeq) url.searchParams.set('tntSalesEmpSeq', tntEmpSeq)
+            if (dysEmpSeq) url.searchParams.set('dysSalesEmpSeq', dysEmpSeq)
+          }
+        } else {
+          // TNT 또는 DYS → 해당 회사의 emp_seq 전달
+          const seq = await resolveMyEmpSeqForCompany(company)
+          if (seq) url.searchParams.set('salesEmpSeq', seq)
+        }
       }
       const res = await fetch(url.toString(), { cache: 'no-store' })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
