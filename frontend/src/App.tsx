@@ -49,13 +49,15 @@ const TMMonthlyMatrixPanel = lazy(() =>
 const PromotionPanel = lazy(() =>
   import('./features/inventory/PromotionPanel').then((m) => ({ default: m.PromotionPanel }))
 )
+const StandardUI = React.lazy(() => import('./features/standard_ui/StandardUI').then(m => ({ default: m.StandardUI })))
+const StandardInquiry = React.lazy(() => import('./features/lab/standard_inquiry/StandardInquiry').then(m => ({ default: m.StandardInquiry })))
 
 export default function App() {
   // selection key format example: 'calendar', 'demand', 'demand:excel-upload'
   const [selectedKey, setSelectedKey] = useState<string>('calendar')
   const [menuCollapsed, setMenuCollapsed] = useState<boolean>(false)
   const [loggedIn, setLoggedIn] = useState<boolean>(() => {
-      try { return !!localStorage.getItem('tnt.sales.empId') } catch { return false }
+    try { return !!localStorage.getItem('tnt.sales.empId') } catch { return false }
   })
   const isMobile = useIsMobile(768)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -203,7 +205,10 @@ export default function App() {
           <div className="pane-header" />
           {loggedIn ? (
             <Suspense fallback={centerFallback}>
-              {selectedKey === 'demand:list' ? (<DemandList />) : (<MainView selectedKey={selectedKey} />)}
+              {selectedKey === 'demand:list' ? (<DemandList />) :
+                selectedKey === 'standard-ui' ? (<StandardUI />) :
+                  selectedKey === 'lab:standard-inquiry' ? (<StandardInquiry />) :
+                    (<MainView selectedKey={selectedKey} />)}
             </Suspense>
           ) : (
             <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
@@ -211,7 +216,7 @@ export default function App() {
             </div>
           )}
         </div>
-          <div className="pane right">
+        <div className="pane right">
           <div className="pane-header">
             {selectedKey === 'sales-assign' ? '매출 조회' : ''}
           </div>

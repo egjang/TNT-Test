@@ -147,8 +147,10 @@ export function getAllMenuItems(): MenuItem[] {
         { key: 'lab:price-sim', label: '판매단가 Sim (직원)' },
         { key: 'lab:price-sim-unit', label: '판매단가 Sim (영업관리단위)' },
         { key: 'lab:price-simulation', label: 'Pricing Agent' },
+        { key: 'lab:standard-inquiry', label: 'Standard Inquiry' },
       ],
     },
+    { key: 'standard-ui', label: 'Standard UI System', icon: FlaskConical },
   ]
   return items.filter(Boolean) as MenuItem[]
 }
