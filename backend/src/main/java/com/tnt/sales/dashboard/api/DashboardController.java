@@ -630,10 +630,15 @@ public class DashboardController {
      * Monthly activity analysis by salesperson for the current year
      * Returns monthly activity counts (planned and completed) for each employee
      */
+    /**
+     * Monthly activity analysis by salesperson for the current year
+     * Returns monthly activity counts (planned and completed) for each employee
+     */
     @GetMapping("/activity-analysis")
     public ResponseEntity<?> activityAnalysis(
             @RequestParam(value = "year", required = false) Integer year,
-            @RequestParam(value = "depts", required = false) String deptsCsv) {
+            @RequestParam(value = "depts", required = false) String deptsCsv,
+            @RequestParam(value = "activityType", required = false, defaultValue = "ALL") String activityType) {
         // nodb profile: return stub data
         for (String p : env.getActiveProfiles()) {
             if ("nodb".equalsIgnoreCase(p)) {
@@ -681,30 +686,61 @@ public class DashboardController {
                 in = sb.toString();
             }
 
-            String sql = "WITH monthly_activities AS (" +
-                    "  SELECT sa.sf_owner_id, " +
-                    "         EXTRACT(MONTH FROM sa.planned_start_at)::int AS month, " +
-                    "         COUNT(*) AS planned, " +
-                    "         SUM(CASE WHEN (LOWER(BTRIM(sa.activity_status)) IN ('completed') OR BTRIM(sa.activity_status) IN ('완료')) THEN 1 ELSE 0 END) AS completed "
-                    +
-                    "    FROM public.sales_activity sa " +
-                    "   WHERE EXTRACT(YEAR FROM sa.planned_start_at) = ? " +
-                    "     AND sa.parent_activity_seq IS NULL " +
-                    "   GROUP BY sa.sf_owner_id, EXTRACT(MONTH FROM sa.planned_start_at) " +
-                    ") " +
-                    "SELECT e.emp_id, e.assignee_id, e.emp_name, e.dept_name, " +
-                    "       ma.month, COALESCE(ma.planned, 0) AS planned, COALESCE(ma.completed, 0) AS completed " +
-                    "  FROM public.employee e " +
-                    "  LEFT JOIN monthly_activities ma ON CAST(ma.sf_owner_id AS TEXT) = CAST(e.assignee_id AS TEXT) " +
-                    (in == null ? "" : " WHERE e.dept_name IN " + in) +
-                    "  ORDER BY e.emp_name, ma.month";
+            String type = activityType == null ? "ALL" : activityType.toUpperCase().trim();
+            boolean includeSales = "ALL".equals(type) || "SALES".equals(type);
+            boolean includeRegion = "ALL".equals(type) || "REGION".equals(type);
+
+            StringBuilder sql = new StringBuilder();
+            sql.append("WITH monthly_activities AS ( ");
+
+            if (includeSales) {
+                sql.append("  SELECT sa.sf_owner_id AS owner_id, ");
+                sql.append("         EXTRACT(MONTH FROM sa.planned_start_at)::int AS month, ");
+                sql.append("         COUNT(*) AS planned, ");
+                sql.append(
+                        "         SUM(CASE WHEN (LOWER(BTRIM(sa.activity_status)) IN ('completed') OR BTRIM(sa.activity_status) IN ('완료')) THEN 1 ELSE 0 END) AS completed ");
+                sql.append("    FROM public.sales_activity sa ");
+                sql.append("   WHERE EXTRACT(YEAR FROM sa.planned_start_at) = ? ");
+                sql.append("   GROUP BY sa.sf_owner_id, EXTRACT(MONTH FROM sa.planned_start_at) ");
+            }
+
+            if (includeSales && includeRegion) {
+                sql.append("  UNION ALL ");
+            }
+
+            if (includeRegion) {
+                sql.append("  SELECT rap.assignee_id AS owner_id, ");
+                sql.append("         EXTRACT(MONTH FROM rap.planned_start_at)::int AS month, ");
+                sql.append("         COUNT(*) AS planned, ");
+                sql.append("         SUM(CASE WHEN rap.actual_start_at IS NOT NULL THEN 1 ELSE 0 END) AS completed ");
+                sql.append("    FROM public.region_activity_plan rap ");
+                sql.append("   WHERE EXTRACT(YEAR FROM rap.planned_start_at) = ? ");
+                sql.append("   GROUP BY rap.assignee_id, EXTRACT(MONTH FROM rap.planned_start_at) ");
+            }
+
+            sql.append("), aggregated_activities AS ( ");
+            sql.append("  SELECT owner_id, month, SUM(planned) AS planned, SUM(completed) AS completed ");
+            sql.append("    FROM monthly_activities ");
+            sql.append("   GROUP BY owner_id, month ");
+            sql.append(") ");
+
+            sql.append("SELECT e.emp_id, e.assignee_id, e.emp_name, e.dept_name, ");
+            sql.append("       ma.month, COALESCE(ma.planned, 0) AS planned, COALESCE(ma.completed, 0) AS completed ");
+            sql.append("  FROM public.employee e ");
+            sql.append(
+                    "  LEFT JOIN aggregated_activities ma ON CAST(ma.owner_id AS TEXT) = CAST(e.assignee_id AS TEXT) ");
+            sql.append(in == null ? "" : " WHERE e.dept_name IN " + in);
+            sql.append("  ORDER BY e.emp_name, ma.month");
 
             java.util.List<Object> params = new java.util.ArrayList<>();
-            params.add(targetYear);
+            if (includeSales)
+                params.add(targetYear);
+            if (includeRegion)
+                params.add(targetYear);
             if (in != null)
                 params.addAll(target);
 
-            java.util.List<java.util.Map<String, Object>> rows = jdbc.query(sql, ps -> {
+            java.util.List<java.util.Map<String, Object>> rows = jdbc.query(sql.toString(), ps -> {
                 for (int idx = 0; idx < params.size(); idx++) {
                     ps.setObject(idx + 1, params.get(idx));
                 }
@@ -809,7 +845,6 @@ public class DashboardController {
                     "  FROM public.employee e " +
                     "  JOIN public.sales_activity sa ON CAST(sa.sf_owner_id AS TEXT) = CAST(e.assignee_id AS TEXT) " +
                     " WHERE sa.planned_start_at >= ? AND sa.planned_start_at < ? " +
-                    "   AND sa.parent_activity_seq IS NULL " +
                     (in == null ? "" : " AND e.dept_name IN " + in) +
                     " GROUP BY e.emp_id, e.assignee_id, e.emp_name, e.dept_name, sa.planned_start_at::date " +
                     " ORDER BY e.emp_name, d";

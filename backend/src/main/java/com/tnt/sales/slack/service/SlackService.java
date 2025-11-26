@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -29,6 +30,15 @@ public class SlackService {
 
     public SlackService() {
         this.restTemplate = new RestTemplate();
+    }
+
+    @jakarta.annotation.PostConstruct
+    public void init() {
+        log.info("=== Slack Configuration ===");
+        log.info("Bot Token: {}", botToken != null && !botToken.isEmpty() ?
+            botToken.substring(0, Math.min(20, botToken.length())) + "..." : "NOT SET");
+        log.info("Channel ID: {}", channelId != null && !channelId.isEmpty() ? channelId : "NOT SET");
+        log.info("==========================");
     }
 
     /**
@@ -56,7 +66,17 @@ public class SlackService {
             payload.put("text", message);
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
-            restTemplate.postForEntity(SLACK_API_URL, request, String.class);
+            ResponseEntity<String> response = restTemplate.postForEntity(SLACK_API_URL, request, String.class);
+
+            log.info("Slack API Response Status: {}", response.getStatusCode());
+            log.info("Slack API Response Body: {}", response.getBody());
+
+            // Check if Slack API returned an error in the response body
+            String responseBody = response.getBody();
+            if (responseBody != null && responseBody.contains("\"ok\":false")) {
+                log.error("Slack API returned error: {}", responseBody);
+                return false;
+            }
 
             log.info("Slack 메시지 전송 성공: {}", message);
             return true;

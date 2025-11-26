@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.tnt.sales.competitor.mapper.CompetitorInsightMapper">
+
+    <insert id="insert" parameterType="com.tnt.sales.competitor.model.CompetitorInsight" useGeneratedKeys="true" keyProperty="insightId">
+        INSERT INTO public.competitor_insight (
+            competitor_id,
+            product_id,
+            insight_category_cd,
+            insight_type_cd,
+            title,
+            description,
+            impact_level_cd,
+            impact_analysis,
+            region,
+            reporter_id,
+            source,
+            evidence_url,
+            attachment_url,
+            event_date,
+            detected_date,
+            reported_at,
+            created_at,
+            updated_at,
+            created_by,
+            updated_by
+        ) VALUES (
+            #{competitorId},
+            #{productId},
+            #{insightCategoryCd},
+            #{insightTypeCd},
+            #{title},
+            #{description},
+            #{impactLevelCd},
+            #{impactAnalysis},
+            #{region},
+            #{reporterId},
+            #{source},
+            #{evidenceUrl},
+            #{attachmentUrl},
+            #{eventDate},
+            #{detectedDate},
+            #{reportedAt},
+            NOW(),
+            NOW(),
+            #{createdBy},
+            #{updatedBy}
+        )
+    </insert>
+
+    <select id="findByCompetitorId" parameterType="long" resultType="com.tnt.sales.competitor.model.CompetitorInsight">
+        SELECT
+            insight_id AS insightId,
+            competitor_id AS competitorId,
+            product_id AS productId,
+            insight_category_cd AS insightCategoryCd,
+            insight_type_cd AS insightTypeCd,
+            title,
+            description,
+            impact_level_cd AS impactLevelCd,
+            impact_analysis AS impactAnalysis,
+            region,
+            reporter_id AS reporterId,
+            source,
+            evidence_url AS evidenceUrl,
+            attachment_url AS attachmentUrl,
+            event_date AS eventDate,
+            detected_date AS detectedDate,
+            reported_at AS reportedAt,
+            created_at AS createdAt,
+            updated_at AS updatedAt,
+            created_by AS createdBy,
+            updated_by AS updatedBy
+        FROM public.competitor_insight
+        WHERE competitor_id = #{competitorId}
+        ORDER BY created_at DESC
+    </select>
+
+</mapper>

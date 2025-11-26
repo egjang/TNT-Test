@@ -6,6 +6,7 @@ type Row = {
   itemStdUnit: string
   itemUnit: string
   itemCount: number
+  missingCount: number
 }
 
 type DetailRow = {
@@ -14,6 +15,7 @@ type DetailRow = {
   itemStdUnit: string
   itemUnit: string
   salesMgmtUnitSeq: string | number | null
+  newStdUnit?: string
 }
 
 export function ItemUnitAnalysis() {
@@ -23,6 +25,8 @@ export function ItemUnitAnalysis() {
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detail, setDetail] = useState<DetailRow[]>([])
+  const [editedUnits, setEditedUnits] = useState<Map<string, string>>(new Map())
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -42,6 +46,7 @@ export function ItemUnitAnalysis() {
               itemStdUnit: String(r.itemStdUnit ?? '미지정'),
               itemUnit: String(r.itemUnit ?? '미지정'),
               itemCount: Number(r.itemCount ?? 0),
+              missingCount: Number(r.missingCount ?? 0),
             }))
           : []
         setRows(cleaned)
@@ -91,9 +96,11 @@ export function ItemUnitAnalysis() {
             itemStdUnit: String(r.itemStdUnit ?? '미지정'),
             itemUnit: String(r.itemUnit ?? '미지정'),
             salesMgmtUnitSeq: r.salesMgmtUnitSeq ?? null,
+            newStdUnit: r.newStdUnit ?? undefined,
           }))
         : []
       setDetail(mapped)
+      setEditedUnits(new Map())
     } catch (e: any) {
       setError(e?.message || '상세 조회 중 오류가 발생했습니다')
     } finally {
@@ -101,17 +108,100 @@ export function ItemUnitAnalysis() {
     }
   }
 
+  async function handleSave() {
+    if (editedUnits.size === 0) {
+      alert('변경된 항목이 없습니다.')
+      return
+    }
+
+    setSaving(true)
+    setError(null)
+
+    try {
+      const requests = Array.from(editedUnits.entries()).map(([itemName, newStdUnit]) => {
+        const item = detail.find(d => d.itemName === itemName)
+        return {
+          itemName,
+          salesUnit: item?.itemUnit ?? '',
+          stdUnit: item?.itemStdUnit ?? '',
+          newStdUnit,
+        }
+      })
+
+      const res = await fetch('/api/v1/items/unit-modify/upsert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requests),
+      })
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+      const result = await res.json()
+      if (result.success) {
+        alert(`${result.updated}개 항목이 저장되었습니다.`)
+        // Update detail with saved values
+        setDetail(prev => prev.map(d => {
+          const edited = editedUnits.get(d.itemName)
+          if (edited !== undefined) {
+            return { ...d, newStdUnit: edited }
+          }
+          return d
+        }))
+        setEditedUnits(new Map())
+      } else {
+        throw new Error(result.error || '저장 실패')
+      }
+    } catch (e: any) {
+      setError(e?.message || '저장 중 오류가 발생했습니다')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function handleNewStdUnitChange(itemName: string, value: string) {
+    setEditedUnits(prev => {
+      const next = new Map(prev)
+      next.set(itemName, value)
+      return next
+    })
+  }
+
+  function getCurrentNewStdUnit(d: DetailRow): string {
+    const edited = editedUnits.get(d.itemName)
+    if (edited !== undefined) return edited
+    return d.newStdUnit ?? ''
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div>
-          <h2 style={{ margin: 0 }}>품목단위분석</h2>
-          <p style={{ margin: '4px 0 0', color: 'var(--muted)' }}>
-            item 테이블 기준으로 영업관리단위별 사용 단위(표준단위/판매단위) 분포를 확인합니다.
-          </p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div>
+            <h2 style={{ margin: 0 }}>품목단위분석</h2>
+            <p style={{ margin: '4px 0 0', color: 'var(--muted)' }}>
+              item 테이블 기준으로 영업관리단위별 사용 단위(표준단위/판매단위) 분포를 확인합니다.
+            </p>
+          </div>
+          {loading ? <span style={{ color: 'var(--muted)' }}>불러오는 중…</span> : null}
+          {error ? <span style={{ color: 'crimson' }}>{error}</span> : null}
         </div>
-        {loading ? <span style={{ color: 'var(--muted)' }}>불러오는 중…</span> : null}
-        {error ? <span style={{ color: 'crimson' }}>{error}</span> : null}
+        {detail.length > 0 && (
+          <button
+            onClick={handleSave}
+            disabled={saving || editedUnits.size === 0}
+            style={{
+              padding: '8px 16px',
+              background: editedUnits.size > 0 ? '#4CAF50' : '#ccc',
+              color: 'white',
+              border: 'none',
+              borderRadius: 6,
+              cursor: editedUnits.size > 0 ? 'pointer' : 'not-allowed',
+              fontWeight: 600,
+            }}
+          >
+            {saving ? '저장 중...' : `저장 (${editedUnits.size})`}
+          </button>
+        )}
       </div>
 
       {grouped.length === 0 && !loading ? (
@@ -137,6 +227,8 @@ export function ItemUnitAnalysis() {
                       const unitKey = `${unit}`
                       const isRowOpen = openKey === rowKey
                       const isUnitOpen = openKey === unitKey
+                      const unitHasMissing = arr.some(row => row.missingCount > 0)
+                      const rowHasMissing = r.missingCount > 0
                       return (
                         <tr key={unit + idx} style={{ borderTop: '1px solid var(--border)' }}>
                           {idx === 0 ? (
@@ -149,7 +241,7 @@ export function ItemUnitAnalysis() {
                               </td>
                               <td
                                 rowSpan={arr.length}
-                                style={{ padding: '6px 8px', fontWeight: 600, cursor: 'pointer', textDecoration: isUnitOpen ? 'underline' : 'none' }}
+                                style={{ padding: '6px 8px', fontWeight: 600, cursor: 'pointer', textDecoration: isUnitOpen ? 'underline' : 'none', color: unitHasMissing ? 'crimson' : undefined }}
                                 onClick={() => {
                                   const next = isUnitOpen ? null : unitKey
                                   setOpenKey(next)
@@ -157,14 +249,14 @@ export function ItemUnitAnalysis() {
                                 }}
                               >
                                 {unit}
-                                <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--muted)' }}>
+                                <span style={{ marginLeft: 8, fontSize: 12, color: unitHasMissing ? 'crimson' : 'var(--muted)' }}>
                                   {isUnitOpen ? '닫기' : '전체 품목'}
                                 </span>
                               </td>
                             </>
                           ) : null}
                           <td
-                            style={{ padding: '6px 8px', cursor: 'pointer', textDecoration: isRowOpen ? 'underline' : 'none' }}
+                            style={{ padding: '6px 8px', cursor: 'pointer', textDecoration: isRowOpen ? 'underline' : 'none', color: rowHasMissing ? 'crimson' : undefined }}
                             onClick={() => {
                               const next = isRowOpen ? null : rowKey
                               setOpenKey(next)
@@ -172,12 +264,12 @@ export function ItemUnitAnalysis() {
                             }}
                           >
                             {r.itemUnit}
-                            <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--muted)' }}>
+                            <span style={{ marginLeft: 8, fontSize: 12, color: rowHasMissing ? 'crimson' : 'var(--muted)' }}>
                               {isRowOpen ? '닫기' : '품목 보기'}
                             </span>
                           </td>
                           <td
-                            style={{ padding: '6px 8px', cursor: 'pointer', textDecoration: isRowOpen ? 'underline' : 'none' }}
+                            style={{ padding: '6px 8px', cursor: 'pointer', textDecoration: isRowOpen ? 'underline' : 'none', color: rowHasMissing ? 'crimson' : undefined }}
                             onClick={() => {
                               const next = isRowOpen ? null : rowKey
                               setOpenKey(next)
@@ -185,7 +277,7 @@ export function ItemUnitAnalysis() {
                             }}
                           >
                             {r.itemStdUnit}
-                            <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--muted)' }}>
+                            <span style={{ marginLeft: 8, fontSize: 12, color: rowHasMissing ? 'crimson' : 'var(--muted)' }}>
                               {isRowOpen ? '닫기' : '품목 보기'}
                             </span>
                           </td>
@@ -208,20 +300,40 @@ export function ItemUnitAnalysis() {
                                     <th style={{ textAlign: 'left', padding: '6px 8px' }}>품목명</th>
                                     <th style={{ textAlign: 'left', padding: '6px 8px' }}>판매단위</th>
                                     <th style={{ textAlign: 'left', padding: '6px 8px' }}>표준단위</th>
+                                    <th style={{ textAlign: 'left', padding: '6px 8px', width: 150 }}>새표준단위</th>
                                     <th style={{ textAlign: 'right', padding: '6px 8px' }}>품목SEQ</th>
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {detail.map((d, i) => (
+                                  {detail.map((d, i) => {
+                                    const currentNewStdUnit = getCurrentNewStdUnit(d)
+                                    const isEmpty = !currentNewStdUnit || currentNewStdUnit.trim() === ''
+                                    return (
                                     <tr key={(d.itemSeq ?? 'na') + '-' + i} style={{ borderTop: '1px solid var(--border)' }}>
-                                      <td style={{ padding: '6px 8px' }}>{d.itemName || '(이름 없음)'}</td>
-                                      <td style={{ padding: '6px 8px' }}>{d.itemUnit || '미지정'}</td>
+                                      <td style={{ padding: '6px 8px', color: isEmpty ? 'crimson' : undefined, fontWeight: isEmpty ? 600 : undefined }}>{d.itemName || '(이름 없음)'}</td>
+                                      <td style={{ padding: '6px 8px', color: isEmpty ? 'crimson' : undefined }}>{d.itemUnit || '미지정'}</td>
                                       <td style={{ padding: '6px 8px' }}>{d.itemStdUnit || '미지정'}</td>
+                                      <td style={{ padding: '6px 8px' }}>
+                                        <input
+                                          type="text"
+                                          value={getCurrentNewStdUnit(d)}
+                                          onChange={(e) => handleNewStdUnitChange(d.itemName, e.target.value)}
+                                          placeholder="입력"
+                                          style={{
+                                            width: '100%',
+                                            padding: '4px 8px',
+                                            border: '1px solid var(--border)',
+                                            borderRadius: 4,
+                                            fontSize: 13,
+                                          }}
+                                        />
+                                      </td>
                                       <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--muted)' }}>
                                         {d.itemSeq ?? ''}
                                       </td>
                                     </tr>
-                                  ))}
+                                  )})}
+
                                 </tbody>
                               </table>
                             </div>

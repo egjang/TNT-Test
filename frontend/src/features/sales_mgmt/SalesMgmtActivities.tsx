@@ -3,6 +3,8 @@ import { getWeekRange, formatRange } from '../../utils/week'
 import chevronLeft from '../../assets/icons/chevron-left.svg'
 import chevronRight from '../../assets/icons/chevron-right.svg'
 import targetIcon from '../../assets/icons/target.svg'
+import aiSparkle from '../../assets/icons/ai-sparkle.svg'
+import { ActivityAnalysisAIModal } from './ActivityAnalysisAIModal'
 
 type WeekValue = { plan: number; actual: number }
 
@@ -52,6 +54,7 @@ export function SalesMgmtActivities() {
   const [data, setData] = useState<Person[]>([])
   const [offset, setOffset] = useState<number>(0)
   const [sortBy, setSortBy] = useState<SortOption>('default')
+  const [showAIModal, setShowAIModal] = useState(false)
 
   // Region activity plan data
   const [regionData, setRegionData] = useState<Person[]>([])
@@ -410,6 +413,39 @@ export function SalesMgmtActivities() {
               <span style={{ fontWeight: 500 }}>실적</span>
             </div>
           </div>
+
+          {/* AI Agent Button */}
+          <button
+            className="btn"
+            onClick={() => setShowAIModal(true)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '0 16px',
+              height: 44,
+              border: '1px solid var(--accent)',
+              borderRadius: 10,
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              color: 'white',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-1px)'
+              e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.4)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)'
+              e.currentTarget.style.boxShadow = '0 2px 8px rgba(102, 126, 234, 0.3)'
+            }}
+          >
+            <img src={aiSparkle} className="icon" alt="AI" style={{ filter: 'brightness(0) invert(1)', width: 18, height: 18 }} />
+            <span>AI Agent(Beta)</span>
+          </button>
         </div>
       </div>
 
@@ -583,6 +619,12 @@ export function SalesMgmtActivities() {
           </div>
         )}
       </div>
+
+      {/* AI Analysis Modal */}
+      <ActivityAnalysisAIModal
+        isOpen={showAIModal}
+        onClose={() => setShowAIModal(false)}
+      />
     </section>
   )
 }

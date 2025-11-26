@@ -38,6 +38,7 @@ import { ARAgingDashboard } from '../credit/ARAgingDashboard'
 import { CreditMeetingList } from '../credit/CreditMeetingList'
 import { CreditMeetingDetail } from '../credit/CreditMeetingDetail'
 import { UnblockingRequestForm } from '../credit/UnblockingRequestForm'
+import { CompetitorManagement } from '../competitor/CompetitorManagement'
 
 type Props = { selectedKey: string }
 
@@ -78,6 +79,10 @@ export function MainView({ selectedKey }: Props) {
         <Customer360Old />
       ) : selectedKey === 'customer:my-activities' && flags.customerManagement ? (
         <MyActivitiesList />
+      ) : selectedKey === 'competitor:register' ? (
+        <CompetitorManagement />
+      ) : selectedKey === 'competitor:register' ? (
+        <CompetitorManagement />
       ) : selectedKey === 'lead:register' || selectedKey === 'lead' ? (
         <Lead />
       ) : selectedKey === 'lead:tm-status' ? (

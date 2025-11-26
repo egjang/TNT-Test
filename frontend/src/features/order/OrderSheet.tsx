@@ -96,7 +96,7 @@ export function OrderSheet() {
       } else {
         // Use apiCompanyType from item table, fallback to transaction companyType
         const finalCompanyType = apiCompanyType || it.companyType || null
-        const newItem = { itemSeq: it.itemSeq, itemName: it.itemName, itemSpec: spec || '', qty: '', itemStdUnit: stdUnit || undefined, companyType: finalCompanyType }
+        const newItem = { itemSeq: it.itemSeq, itemName: it.itemName, itemSpec: spec || '', qty: '', itemStdUnit: stdUnit || it.itemStdUnit || undefined, companyType: finalCompanyType }
         cart.push(newItem)
       }
       localStorage.setItem('tnt.sales.ordersheet.cart', JSON.stringify(cart))
@@ -286,7 +286,6 @@ export function OrderSheet() {
         <table className="table">
           <thead>
             <tr>
-              <th style={{ width: 160 }}>회사코드</th>
               <th>거래처명</th>
               <th style={{ width: 160 }}>대표자</th>
               <th style={{ width: 180 }}>사업자번호</th>
@@ -296,8 +295,20 @@ export function OrderSheet() {
           <tbody>
             {items.map((it, idx) => (
               <tr key={idx} className={activeIdx === idx ? 'selected' : undefined} onClick={() => select(it, idx)}>
-                <td>{it.companyCode || it.companyType || ''}</td>
-                <td>{it.customerName}</td>
+                <td style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  {(() => {
+                    const ct = it.companyType || it.companyCode || ''
+                    const k = ct.toUpperCase()
+                    const label = k === 'TNT' ? 'T' : k === 'DYS' ? 'D' : k === 'ALL' ? 'A' : ''
+                    const color = k === 'TNT' ? '#2563eb' : k === 'DYS' ? '#10b981' : k === 'ALL' ? '#f59e0b' : '#9ca3af'
+                    return label ? (
+                      <span style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:18, height:18, borderRadius:'50%', background: color, color:'#fff', fontSize:11, fontWeight:800, boxShadow:'0 0 0 1px rgba(0,0,0,.08)' }}>
+                        {label}
+                      </span>
+                    ) : null
+                  })()}
+                  <span>{it.customerName}</span>
+                </td>
                 <td>{it.ownerName}</td>
                 <td>{it.bizNo}</td>
                 <td>{it.telNo}</td>

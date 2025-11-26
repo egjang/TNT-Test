@@ -92,6 +92,16 @@ export function getAllMenuItems(): MenuItem[] {
         ],
       }
       : null,
+    // 경쟁사정보 (1레벨)
+    {
+      key: 'competitor',
+      label: '경쟁사정보',
+      icon: Users, // Using Users icon as a placeholder, similar to customer
+      children: [
+        { key: 'competitor:register', label: '경쟁사 등록' },
+        { key: 'competitor:trends', label: '경쟁사 동향' },
+      ],
+    },
     // 1레벨 Item360 메뉴 추가
     { key: 'item360', label: 'Item360', icon: Package },
     // 재고 메뉴

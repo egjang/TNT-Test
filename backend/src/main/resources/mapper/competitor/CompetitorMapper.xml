@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.tnt.sales.competitor.mapper.CompetitorMapper">
+
+    <insert id="insert" parameterType="com.tnt.sales.competitor.model.Competitor" useGeneratedKeys="true" keyProperty="competitorId">
+        INSERT INTO public.competitor (
+            competitor_name,
+            country,
+            homepage,
+            founded_year,
+            description,
+            market_position_cd,
+            distribution_model,
+            created_at,
+            updated_at,
+            created_by,
+            updated_by
+        ) VALUES (
+            #{competitorName},
+            #{country},
+            #{homepage},
+            #{foundedYear},
+            #{description},
+            #{marketPositionCd},
+            #{distributionModel},
+            NOW(),
+            NOW(),
+            #{createdBy},
+            #{updatedBy}
+        )
+    </insert>
+
+    <update id="update" parameterType="com.tnt.sales.competitor.model.Competitor">
+        UPDATE public.competitor
+        SET
+            competitor_name = #{competitorName},
+            country = #{country},
+            homepage = #{homepage},
+            founded_year = #{foundedYear},
+            description = #{description},
+            market_position_cd = #{marketPositionCd},
+            distribution_model = #{distributionModel},
+            updated_at = NOW(),
+            updated_by = #{updatedBy}
+        WHERE competitor_id = #{competitorId}
+    </update>
+
+    <select id="findAll" parameterType="map" resultType="com.tnt.sales.competitor.model.Competitor">
+        SELECT
+            competitor_id AS competitorId,
+            competitor_name AS competitorName,
+            country,
+            homepage,
+            founded_year AS foundedYear,
+            description,
+            market_position_cd AS marketPositionCd,
+            distribution_model AS distributionModel,
+            created_at AS createdAt,
+            updated_at AS updatedAt,
+            created_by AS createdBy,
+            updated_by AS updatedBy
+        FROM public.competitor
+        <where>
+            <if test="name != null and name != ''">
+                AND competitor_name ILIKE CONCAT('%', #{name}, '%')
+            </if>
+            <if test="marketPosition != null and marketPosition != ''">
+                AND market_position_cd = #{marketPosition}
+            </if>
+            <if test="distributionModel != null and distributionModel != ''">
+                AND distribution_model = #{distributionModel}
+            </if>
+        </where>
+        ORDER BY created_at DESC
+    </select>
+
+</mapper>

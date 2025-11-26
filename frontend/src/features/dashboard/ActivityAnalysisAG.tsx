@@ -64,17 +64,13 @@ export function ActivityAnalysisAG() {
     const currentMonth = now.getMonth() + 1
     const currentWeek = getWeekNumber(now)
 
-    // Form State
-    const [formYear, setFormYear] = useState<number>(currentYear)
-    const [formMonth, setFormMonth] = useState<number | 'all'>(currentMonth)
-    const [formWeek, setFormWeek] = useState<number | 'all'>(currentWeek)
-
     // Active Search State
     const [searchParams, setSearchParams] = useState<{
         year: number,
         month: number | 'all',
-        week: number | 'all'
-    }>({ year: currentYear, month: currentMonth, week: currentWeek })
+        week: number | 'all',
+        activityType: 'all' | 'sales' | 'region'
+    }>({ year: currentYear, month: currentMonth, week: currentWeek, activityType: 'all' })
 
     const [yearlyData, setYearlyData] = useState<EmployeeActivity[]>([]) // For Heatmap (Always Year)
     const [dailyData, setDailyData] = useState<DailyData[]>([]) // For Month/Week views
@@ -85,7 +81,7 @@ export function ActivityAnalysisAG() {
     useEffect(() => {
         async function loadYearly() {
             try {
-                const res = await fetch(`/api/v1/dashboard/activity-analysis?year=${searchParams.year}`)
+                const res = await fetch(`/api/v1/dashboard/activity-analysis?year=${searchParams.year}&activityType=${searchParams.activityType.toUpperCase()}`)
                 if (res.ok) {
                     const result = await res.json()
                     setYearlyData(Array.isArray(result) ? result : [])
@@ -93,7 +89,7 @@ export function ActivityAnalysisAG() {
             } catch (e) { console.error(e) }
         }
         loadYearly()
-    }, [searchParams.year])
+    }, [searchParams.year, searchParams.activityType])
 
     // Load Specific Data based on View Mode
     useEffect(() => {
@@ -131,8 +127,14 @@ export function ActivityAnalysisAG() {
     }, [searchParams])
 
     const handleSearch = () => {
-        setSearchParams({ year: formYear, month: formMonth, week: formWeek })
+        setSearchParams({ year: formYear, month: formMonth, week: formWeek, activityType: formActivityType })
     }
+
+    // Form State
+    const [formYear, setFormYear] = useState<number>(currentYear)
+    const [formMonth, setFormMonth] = useState<number | 'all'>(currentMonth)
+    const [formWeek, setFormWeek] = useState<number | 'all'>(currentWeek)
+    const [formActivityType, setFormActivityType] = useState<'all' | 'sales' | 'region'>('all')
 
     function getWeeksInMonth(year: number, month: number) {
         const weeks: number[] = []
@@ -267,6 +269,33 @@ export function ActivityAnalysisAG() {
                     영업 활동 분석
                 </h2>
                 <div className="controls" style={{ display: 'flex', gap: 8, marginRight: 380 }}>
+                    <div style={{ background: '#f3f4f6', padding: 4, borderRadius: 8, display: 'flex' }}>
+                        {(['all', 'sales', 'region'] as const).map(type => {
+                            const label = type === 'all' ? '전체' : type === 'sales' ? '활동' : '지역활동'
+                            const isActive = formActivityType === type
+                            return (
+                                <button
+                                    key={type}
+                                    onClick={() => setFormActivityType(type)}
+                                    style={{
+                                        padding: '6px 12px',
+                                        borderRadius: 6,
+                                        border: 'none',
+                                        fontSize: 13,
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                        background: isActive ? '#fff' : 'transparent',
+                                        color: isActive ? '#2563eb' : '#6b7280',
+                                        boxShadow: isActive ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    {label}
+                                </button>
+                            )
+                        })}
+                    </div>
+
                     <select
                         className="subject-input"
                         value={formYear}
