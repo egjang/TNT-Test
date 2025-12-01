@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { SalesAnalysisAIModal } from './SalesAnalysisAIModal'
 
 type Emp = {
   key: string
@@ -27,6 +28,7 @@ export function SalesDashboard() {
   const [countRows, setCountRows] = useState<any[]>([])
   const [countLoading, setCountLoading] = useState(false)
   const [countError, setCountError] = useState<string | null>(null)
+  const [showSalesAIModal, setShowSalesAIModal] = useState(false)
   const companyGoals = useMemo(() => {
     try {
       let tnt = 0, dys = 0
@@ -384,7 +386,28 @@ export function SalesDashboard() {
             </aside>
             <div style={{ flex: '0 0 auto', width: 1, background:'var(--border)' }} />
             <aside style={{ flex: '0 0 260px', maxWidth: 320, paddingLeft: 8, display:'flex', flexDirection:'column', justifyContent:'center' }}>
-              <div style={{ fontWeight: 800, marginBottom: 8 }}>차액</div>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: 8 }}>
+                <div style={{ fontWeight: 800 }}>차액</div>
+                <button
+                  onClick={() => setShowSalesAIModal(true)}
+                  style={{
+                    padding: '4px 10px',
+                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                    border: 'none',
+                    borderRadius: 6,
+                    color: 'white',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                  }}
+                >
+                  <span>💰</span>
+                  <span>매출 AI Agent (Beta)</span>
+                </button>
+              </div>
               <div className="card" style={{ padding: 10, border: '1px solid var(--border)', borderRadius: 10, display:'flex', alignItems:'center', justifyContent:'center', minHeight: 92 }}>
                 <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10, width: '100%' }}>
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'center', width: '100%' }}>
@@ -467,6 +490,9 @@ export function SalesDashboard() {
           )
         })()}
       </div>
+
+      {/* Sales AI Agent Modal */}
+      <SalesAnalysisAIModal isOpen={showSalesAIModal} onClose={() => setShowSalesAIModal(false)} />
     </section>
   )
 }

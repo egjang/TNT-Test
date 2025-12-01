@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
+import { getAssigneeId, getEmpName } from '../../utils/auth'
 
 interface ActivityAnalysisAIModalProps {
   isOpen: boolean
@@ -39,6 +40,8 @@ export function ActivityAnalysisAIModal({ isOpen, onClose }: ActivityAnalysisAIM
         },
         body: JSON.stringify({
           question: question.trim(),
+          assigneeId: getAssigneeId(),
+          empName: getEmpName(),
         }),
       })
 

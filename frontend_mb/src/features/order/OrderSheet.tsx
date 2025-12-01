@@ -30,14 +30,17 @@ export function OrderSheet() {
   const bubbleRef = useRef<HTMLDivElement | null>(null)
   const [invItemSeq, setInvItemSeq] = useState<string | null>(null)
 
-  async function loadItems(forCustomerSeq?: number) {
+  async function loadItems(forCustomer?: Row) {
     try {
       setItemLoading(true)
-      const sel = activeIdx != null ? items[activeIdx] : null
+      // Use passed customer or fallback to selected customer from state (like PC version)
+      const sel = forCustomer ?? (activeIdx != null ? items[activeIdx] : null)
       const params2 = new URLSearchParams()
       params2.set('q', (itemQ.trim() || q.trim()))
-      const cseq = (forCustomerSeq != null ? forCustomerSeq : sel?.customerSeq)
-      if (cseq != null) params2.set('customerSeq', String(cseq))
+      // Pass companyType and customerSeq for invoice filtering (like PC version)
+      const compType = sel?.companyType || sel?.companyCode
+      if (compType) params2.set('companyType', compType)
+      if (sel?.customerSeq != null) params2.set('customerSeq', String(sel.customerSeq))
       const r2 = await fetch(`/api/v1/items/search?${params2.toString()}`)
       const data2 = r2.ok ? await r2.json() : []
       const list2 = Array.isArray(data2) ? data2.map((x: any) => ({
@@ -60,7 +63,7 @@ export function OrderSheet() {
 
   const [invNotice, setInvNotice] = useState<{ open:boolean; text:string }>(()=>({ open:false, text:'' }))
   const [custOpen, setCustOpen] = useState(true)
-  const [invSummary, setInvSummary] = useState<Array<{ itemName: string; recentDate: string; totalAmt: number; totalQty: number }>>([])
+  const [invSummary, setInvSummary] = useState<Array<{ itemSeq: any; itemName: string; companyType?: string | null; recentDate: string; totalAmt: number; totalQty: number }>>([])
 
   async function addToCart(it: { itemSeq: any; itemName: string; invoiceDate?: string | null; itemStdUnit?: string | null; companyType?: string | null }) {
     if (it == null || it.itemSeq == null) return
@@ -68,8 +71,8 @@ export function OrderSheet() {
     try {
       let spec: string | undefined = undefined
       let stdUnit: string | undefined = typeof it.itemStdUnit === 'string' ? it.itemStdUnit : undefined
-      // Try to get spec via API
-      const r = await fetch(`/api/v1/items/spec?itemSeq=${encodeURIComponent(String(it.itemSeq))}`)
+      // Try to get spec via API (include companyType like PC version)
+      const r = await fetch(`/api/v1/items/spec?companyType=${encodeURIComponent(String(it.companyType || ''))}&itemSeq=${encodeURIComponent(String(it.itemSeq))}`)
       if (r.ok) {
         const data = await r.json().catch(() => ({}))
         if (data && data.itemSpec) spec = String(data.itemSpec)
@@ -203,9 +206,14 @@ export function OrderSheet() {
     if (it) { await showAvail(e, it as any) }
   }
 
-  async function addToCartFromSummary(itemName: string) {
-    const it = await resolveItemByName(itemName)
-    if (it) { await addToCart(it as any) }
+  async function addToCartFromSummary(it: { itemSeq: any; itemName: string; companyType?: string | null }) {
+    let resolved = it
+    if (!resolved.itemSeq) {
+      const found = await resolveItemByName(it.itemName)
+      if (!found) return
+      resolved = { ...resolved, ...found }
+    }
+    await addToCart({ itemSeq: resolved.itemSeq, itemName: resolved.itemName, companyType: resolved.companyType || undefined })
   }
 
   // Close bubble on outside click or ESC
@@ -265,7 +273,7 @@ export function OrderSheet() {
           localStorage.setItem('tnt.sales.ordersheet.selectedCustomer', JSON.stringify(list[0]))
           window.dispatchEvent(new CustomEvent('tnt.sales.ordersheet.customer.selected', { detail: { customer: list[0] } }) as any)
         } catch {}
-        await loadItems(list[0]?.customerSeq)
+        await loadItems(list[0])
       } else {
         setActiveIdx(null)
         setItemList([])
@@ -297,7 +305,7 @@ export function OrderSheet() {
       localStorage.setItem('tnt.sales.ordersheet.selectedCustomer', JSON.stringify(row))
       window.dispatchEvent(new CustomEvent('tnt.sales.ordersheet.customer.selected', { detail: { customer: row } }) as any)
     } catch {}
-    loadItems(row.customerSeq)
+    loadItems(row)
     loadInvoiceSummary(row.customerSeq)
   }
 
@@ -311,24 +319,29 @@ export function OrderSheet() {
       const arr = await r.json().catch(()=>[])
       if (!Array.isArray(arr)) { setInvSummary([]); return }
       const oneYearAgo = Date.now() - 365*24*60*60*1000
-      const map: Record<string, { itemName: string; recent: number; totalAmt: number; totalQty: number }> = {}
+      const map: Record<string, { itemSeq: any; itemName: string; companyType: string | null; recent: number; totalAmt: number; totalQty: number }> = {}
       for (const x of arr) {
         const itemName = String(x?.itemName ?? x?.item_name ?? '').trim()
         if (!itemName) continue
+        const itemSeq = x?.itemSeq ?? x?.item_seq ?? null
+        const companyType = x?.companyType ?? x?.company_type ?? null
         const amt = Number(x?.curAmt ?? x?.cur_amt ?? 0) || 0
         const qty = Number(x?.qty ?? 0) || 0
         const dstr = String(x?.invoiceDate ?? x?.invoice_date ?? '')
         const t = Date.parse(dstr) || Date.parse(dstr.replace(' ', 'T')) || NaN
         if (!Number.isFinite(t) || t < oneYearAgo) continue
-        const rec = map[itemName] || { itemName, recent: 0, totalAmt: 0, totalQty: 0 }
+        const key = itemSeq != null ? String(itemSeq) : itemName
+        const rec = map[key] || { itemSeq, itemName, companyType: companyType || null, recent: 0, totalAmt: 0, totalQty: 0 }
         rec.totalAmt += amt
         rec.totalQty += qty
         if (t > rec.recent) rec.recent = t
-        map[itemName] = rec
+        if (rec.itemSeq == null && itemSeq != null) rec.itemSeq = itemSeq
+        if (!rec.companyType && companyType) rec.companyType = companyType
+        map[key] = rec
       }
       const out = Object.values(map)
         .sort((a,b)=> b.recent - a.recent || a.itemName.localeCompare(b.itemName, 'ko', { sensitivity:'base' }))
-        .map(it => ({ itemName: it.itemName, recentDate: new Date(it.recent).toISOString().slice(0,10), totalAmt: it.totalAmt, totalQty: it.totalQty }))
+        .map(it => ({ itemSeq: it.itemSeq, itemName: it.itemName, companyType: it.companyType, recentDate: new Date(it.recent).toISOString().slice(0,10), totalAmt: it.totalAmt, totalQty: it.totalQty }))
       setInvSummary(out)
     } catch { setInvSummary([]) }
   }
@@ -537,8 +550,8 @@ export function OrderSheet() {
                       className="icon-button"
                       aria-label="담기"
                       title="담기"
-                      onClick={() => addToCartFromSummary(it.itemName)}
-                      onKeyDown={(e) => { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); addToCartFromSummary(it.itemName) } }}
+                      onClick={() => addToCartFromSummary({ itemSeq: it.itemSeq, itemName: it.itemName, companyType: it.companyType })}
+                      onKeyDown={(e) => { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); addToCartFromSummary({ itemSeq: it.itemSeq, itemName: it.itemName, companyType: it.companyType }) } }}
                     >
                       <Plus className="icon" size={18} />
                     </span>

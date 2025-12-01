@@ -84,6 +84,9 @@ REM Backend JAR and configs
 copy /y "%BACKEND%\target\backend-0.0.1-SNAPSHOT.jar" "%DLV%\backend\backend-0.0.1-SNAPSHOT.jar" >nul
 copy /y "%BACKEND%\src\main\resources\application.yml" "%DLV%\backend\application.yml" >nul
 copy /y "%BACKEND%\src\main\resources\application-postgres.yml" "%DLV%\backend\application-postgres.yml" >nul
+copy /y "%BACKEND%\src\main\resources\application-prod.yml" "%DLV%\backend\application-prod.yml" >nul
+copy /y "%BACKEND%\src\main\resources\activity-ai-tables.yml" "%DLV%\backend\activity-ai-tables.yml" >nul
+copy /y "%BACKEND%\src\main\resources\sales-ai-tables.yml" "%DLV%\backend\sales-ai-tables.yml" >nul
 
 echo.
 echo [5.5/6] Generating backend launchers (BAT/SH)...
@@ -94,7 +97,7 @@ echo [5.5/6] Generating backend launchers (BAT/SH)...
   echo set SCRIPT_DIR=%%~dp0
   echo set BACKEND_DIR=%%SCRIPT_DIR%%backend
   echo set JAR_NAME=backend-0.0.1-SNAPSHOT.jar
-  echo set SPRING_PROFILES_ACTIVE=postgres
+  echo set SPRING_PROFILES_ACTIVE=prod,postgres
   echo if "%%JAVA_OPTS%%"=="" set JAVA_OPTS=-Xms512m -Xmx1024m
   echo if not exist "%%BACKEND_DIR%%\%%JAR_NAME%%" ^(
   echo ^  echo [ERROR] %%JAR_NAME%% not found in %%BACKEND_DIR%%
@@ -116,7 +119,7 @@ REM Also create a POSIX launcher for *nix hosts
   echo SCRIPT_DIR="\$\(cd \"\$\(dirname \"\${BASH_SOURCE[0]}\"\)\" && pwd\)"
   echo BACKEND_DIR="\${SCRIPT_DIR}/backend"
   echo JAR_NAME="backend-0.0.1-SNAPSHOT.jar"
-  echo SPRING_PROFILES_ACTIVE="\${SPRING_PROFILES_ACTIVE:-postgres}"
+  echo SPRING_PROFILES_ACTIVE="\${SPRING_PROFILES_ACTIVE:-prod,postgres}"
   echo JAVA_OPTS="\${JAVA_OPTS:--Xms512m -Xmx1024m}"
   echo LOG_DIR="\${LOG_DIR:-\${SCRIPT_DIR}/logs}"
   echo mkdir -p "\${LOG_DIR}"

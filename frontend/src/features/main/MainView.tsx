@@ -34,6 +34,8 @@ import { PriceSim } from '../lab/PriceSim'
 import { PriceSimUnit } from '../lab/PriceSimUnit'
 import { PriceSimulation } from '../lab/PriceSimulation'
 import { VibeWorkspace } from '../lab/VibeWorkspace'
+import { GoogleRAG } from '../lab/GoogleRAG'
+import { TNTChat } from '../lab/TNTChat'
 import { ARAgingDashboard } from '../credit/ARAgingDashboard'
 import { CreditMeetingList } from '../credit/CreditMeetingList'
 import { CreditMeetingDetail } from '../credit/CreditMeetingDetail'
@@ -124,6 +126,10 @@ export function MainView({ selectedKey }: Props) {
         <SalesMgmtActivities />
       ) : selectedKey === 'lab:vibe-workspace' ? (
         <VibeWorkspace />
+      ) : selectedKey === 'lab:google-rag' ? (
+        <GoogleRAG />
+      ) : selectedKey === 'lab:tnt-chat' ? (
+        <TNTChat />
       ) : selectedKey === 'lab:unit-analysis' ? (
         <ItemUnitAnalysis />
       ) : selectedKey === 'lab:price-sim' ? (

@@ -266,6 +266,7 @@ import java.util.Map;
     public ResponseEntity<?> searchItems(
             @RequestParam("q") String q,
             @RequestParam(value = "customerSeq", required = false) Long customerSeq,
+            @RequestParam(value = "companyType", required = false) String companyType,
             @RequestParam(value = "limit", defaultValue = "100") int limit
     ) {
         // Build order-insensitive tokens: split by space or comma; each token must exist (AND of ILIKE %token%)
@@ -287,9 +288,6 @@ import java.util.Map;
         String itemColSeq = env.getProperty("app.item.columns.item_seq", "item_seq");
         String itemColCompanyType = env.getProperty("app.item.columns.company_type", "company_type");
         String itemColStdUnit = env.getProperty("app.item.columns.item_std_unit", "item_std_unit");
-        String custTbl = env.getProperty("app.customer.table", "public.customer");
-        String custColSeq = env.getProperty("app.customer.columns.customer_seq", "customer_seq");
-        String custColCompanyType = env.getProperty("app.customer.columns.company_type", "company_type");
 
         boolean hasInvCompanyType = columnExists(invTbl, "company_type");
         boolean hasItemCompanyType = columnExists(itemTbl, itemColCompanyType);
@@ -298,8 +296,14 @@ import java.util.Map;
         String itemColSalesUnit = env.getProperty("app.item.columns.sales_mgmt_unit", "sales_mgmt_unit");
         boolean hasItemSalesUnit = !hasItemStdUnit && columnExists(itemTbl, itemColSalesUnit);
 
+        // Use companyType parameter directly if provided, otherwise lookup from customerSeq
         String customerCompanyType = null;
-        if (customerSeq != null) {
+        if (companyType != null && !companyType.isBlank()) {
+            customerCompanyType = companyType.trim();
+        } else if (customerSeq != null) {
+            String custTbl = env.getProperty("app.customer.table", "public.customer");
+            String custColSeq = env.getProperty("app.customer.columns.customer_seq", "customer_seq");
+            String custColCompanyType = env.getProperty("app.customer.columns.company_type", "company_type");
             try {
                 customerCompanyType = jdbc.queryForObject(
                         "SELECT " + custColCompanyType + " FROM " + custTbl + " WHERE " + custColSeq + " = ?",
@@ -322,17 +326,27 @@ import java.util.Map;
         StringBuilder sql = new StringBuilder();
         sql.append("WITH inv AS (\n");
         // invoice source aggregated to one row per item (recent date)
+        // JOIN item table to get item_std_unit
         String dateExpr = dateIsText
                 ? ("to_timestamp(i."+invColDate+", '"+dateFmt+"')")
                 : ("i."+invColDate);
+        // Build item_std_unit expression for invoice query (from joined item table)
+        String invItemStdUnitExpr = hasItemStdUnit
+                ? ("MAX(it." + itemColStdUnit + ")")
+                : (hasItemSalesUnit ? ("MAX(it." + itemColSalesUnit + ")") : "NULL::text");
         sql.append("  SELECT i.").append(invColItemSeq).append(" AS item_seq, i.").append(invColItemName)
            .append(" AS item_name, MAX(").append(dateExpr).append(") AS inv_date, ")
            .append("to_char(MAX(").append(dateExpr).append(") , 'YY-MM-DD') AS inv_date_text, ")
            .append(" SUM(i.").append(invColAmt).append(") AS cur_amt, SUM(i.").append(invColQty).append(") AS qty, ")
-           .append(" ").append(invCompanyExpr).append(" AS company_type, NULL::text AS item_std_unit, ")
+           .append(" ").append(invCompanyExpr).append(" AS company_type, ").append(invItemStdUnitExpr).append(" AS item_std_unit, ")
            .append(" MIN(i.").append(invColCust).append(") AS customer_seq\n")
            .append("  FROM ").append(invTbl).append(" i\n")
-           .append("  WHERE 1=1\n");
+           .append("  LEFT JOIN ").append(itemTbl).append(" it ON i.").append(invColItemSeq).append(" = it.").append(itemColSeq);
+        // Add company_type join condition if both tables have it
+        if (hasInvCompanyType && hasItemCompanyType) {
+            sql.append(" AND i.company_type = it.").append(itemColCompanyType);
+        }
+        sql.append("\n  WHERE 1=1\n");
         for (int ti = 0; ti < tokens.length; ti++) {
             sql.append("    AND i.").append(invColItemName).append(" ILIKE ?\n");
         }
@@ -363,7 +377,6 @@ import java.util.Map;
         sql.append("  SELECT item_seq, item_name, inv_date, inv_date_text, cur_amt, qty, 0 AS src_pri, company_type, item_std_unit, customer_seq FROM inv\n")
            .append("  UNION ALL\n")
            .append("  SELECT item_seq, item_name, NULL AS inv_date, NULL AS inv_date_text, NULL AS cur_amt, NULL AS qty, 1 AS src_pri, company_type, item_std_unit, NULL::bigint AS customer_seq FROM itm\n");
-        // invoice source
         sql.append(")\n");
         // de-duplicate; prefer invoice (src_pri=0)
         sql.append("SELECT item_seq, item_name, inv_date_text AS recent_invoice_date, cur_amt, qty, src_pri, company_type, item_std_unit, customer_seq\n")
@@ -416,7 +429,8 @@ import java.util.Map;
      */
     @GetMapping("/spec")
     public ResponseEntity<?> itemSpec(@RequestParam(value = "itemName", required = false) String itemName,
-                                       @RequestParam(value = "itemSeq", required = false) Long itemSeq) {
+                                       @RequestParam(value = "itemSeq", required = false) Long itemSeq,
+                                       @RequestParam(value = "companyType", required = false) String companyType) {
         String tbl = env.getProperty("app.item.table", "public.item");
         String colSeq = env.getProperty("app.item.columns.item_seq", "item_seq");
         String colName = env.getProperty("app.item.columns.item_name", "item_name");
@@ -435,8 +449,20 @@ import java.util.Map;
             String sql;
             List<Map<String,Object>> rows;
 
-            // Prefer itemName if provided, fallback to itemSeq
-            if (itemName != null && !itemName.trim().isEmpty()) {
+            // Best: companyType + itemSeq (unique key)
+            if (companyType != null && !companyType.trim().isEmpty() && itemSeq != null && itemSeq > 0 && hasCompanyType) {
+                sql = "SELECT "+colSeq+", "+colName+", "+colSpec+", "+stdExpr+", "+companyTypeExpr+" FROM "+tbl+" WHERE "+colCompanyType+"=? AND "+colSeq+"=?"+activeFilter;
+                rows = jdbc.query(sql, ps -> { ps.setString(1, companyType); ps.setLong(2, itemSeq); }, (rs, i) -> {
+                    Map<String,Object> m = new LinkedHashMap<>();
+                    m.put("itemSeq", rs.getObject(1));
+                    m.put("itemName", rs.getString(2));
+                    m.put("itemSpec", rs.getString(3));
+                    m.put("itemStdUnit", rs.getString(4));
+                    m.put("companyType", rs.getString(5));
+                    return m;
+                });
+            // Fallback: itemName only
+            } else if (itemName != null && !itemName.trim().isEmpty()) {
                 sql = "SELECT "+colSeq+", "+colName+", "+colSpec+", "+stdExpr+", "+companyTypeExpr+" FROM "+tbl+" WHERE "+colName+"=?"+activeFilter;
                 rows = jdbc.query(sql, ps -> ps.setString(1, itemName), (rs, i) -> {
                     Map<String,Object> m = new LinkedHashMap<>();
@@ -447,6 +473,7 @@ import java.util.Map;
                     m.put("companyType", rs.getString(5));
                     return m;
                 });
+            // Fallback: itemSeq only (may return wrong company's item)
             } else if (itemSeq != null && itemSeq > 0) {
                 sql = "SELECT "+colSeq+", "+colName+", "+colSpec+", "+stdExpr+", "+companyTypeExpr+" FROM "+tbl+" WHERE "+colSeq+"=?"+activeFilter;
                 rows = jdbc.query(sql, ps -> ps.setLong(1, itemSeq), (rs, i) -> {

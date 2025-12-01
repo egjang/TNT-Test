@@ -85,6 +85,12 @@
       <artifactId>lombok</artifactId>
       <optional>true</optional>
     </dependency>
+    <!-- Google GenAI Java SDK for Gemini API -->
+    <dependency>
+      <groupId>com.google.genai</groupId>
+      <artifactId>google-genai</artifactId>
+      <version>1.0.0</version>
+    </dependency>
   </dependencies>
 
   <build>

@@ -74,9 +74,12 @@ public class DashboardController {
             String dateExpr = dateIsText ? ("to_date(i." + colDate + ", '" + dateFmt + "')")
                     : ("i." + colDate + "::date");
 
+            // Use invoice.company_type for filtering (consistent with AnalysisController)
+            String colCompanyType = env.getProperty("app.invoice.columns.company_type", "company_type");
             String whereClause = "";
             if (companyType != null && !companyType.trim().isEmpty()) {
-                whereClause = " WHERE UPPER(c.company_type) = UPPER('" + companyType.trim().replace("'", "''") + "') ";
+                whereClause = " WHERE UPPER(COALESCE(NULLIF(TRIM(i." + colCompanyType + "), ''), '')) = UPPER('"
+                        + companyType.trim().replace("'", "''") + "') ";
             }
 
             String sql = "SELECT " +
@@ -93,7 +96,6 @@ public class DashboardController {
                     " SUM( CASE WHEN " + dateExpr + " >= ? AND " + dateExpr + " < ? THEN COALESCE(i." + colAmt
                     + ",0) ELSE 0 END ) AS current_year_month_to_date " +
                     " FROM " + tbl + " i " +
-                    " JOIN public.customer c ON CAST(i." + colCust + " AS TEXT) = CAST(c.customer_seq AS TEXT) " +
                     whereClause;
 
             Map<String, Object> out = jdbc.queryForObject(sql, (rs, i) -> {
@@ -351,7 +353,7 @@ public class DashboardController {
             String tbl = env.getProperty("app.invoice.table", "public.invoice");
             String colDate = env.getProperty("app.invoice.columns.invoice_date", "invoice_date");
             String colAmt = env.getProperty("app.invoice.columns.cur_amt", "cur_amt");
-            String colCust = env.getProperty("app.invoice.columns.customer_seq", "customer_seq");
+            String colCompanyType = env.getProperty("app.invoice.columns.company_type", "company_type");
             boolean dateIsText = Boolean
                     .parseBoolean(env.getProperty("app.invoice.columns.invoice_date_is_text", "false"));
             String dateFmt = env.getProperty("app.invoice.columns.invoice_date_format", "YYYY-MM-DD");
@@ -359,16 +361,15 @@ public class DashboardController {
                     : ("i." + colDate + "::date");
 
             String whereClause = dateExpr + " >= ? AND " + dateExpr + " < ?";
-            String joinClause = "";
+            // Use invoice.company_type for filtering (consistent with AnalysisController)
             if (companyType != null && !companyType.trim().isEmpty()) {
-                joinClause = " JOIN public.customer c ON CAST(i." + colCust
-                        + " AS TEXT) = CAST(c.customer_seq AS TEXT) ";
-                whereClause += " AND UPPER(c.company_type) = UPPER('" + companyType.trim().replace("'", "''") + "')";
+                whereClause += " AND UPPER(COALESCE(NULLIF(TRIM(i." + colCompanyType + "), ''), '')) = UPPER('"
+                        + companyType.trim().replace("'", "''") + "')";
             }
 
             String sql = "SELECT EXTRACT(MONTH FROM " + dateExpr + ")::int AS m, " +
                     " SUM(COALESCE(i." + colAmt + ",0))::double precision AS amount " +
-                    " FROM " + tbl + " i " + joinClause + " WHERE " + whereClause + " GROUP BY 1 ORDER BY 1";
+                    " FROM " + tbl + " i WHERE " + whereClause + " GROUP BY 1 ORDER BY 1";
             java.util.List<java.util.Map<String, Object>> rows = jdbc.query(sql, (rs, i) -> {
                 java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
                 m.put("month", rs.getInt(1));
@@ -431,7 +432,7 @@ public class DashboardController {
             String tbl = env.getProperty("app.invoice.table", "public.invoice");
             String colDate = env.getProperty("app.invoice.columns.invoice_date", "invoice_date");
             String colAmt = env.getProperty("app.invoice.columns.cur_amt", "cur_amt");
-            String colCust = env.getProperty("app.invoice.columns.customer_seq", "customer_seq");
+            String colCompanyType = env.getProperty("app.invoice.columns.company_type", "company_type");
             boolean dateIsText = Boolean
                     .parseBoolean(env.getProperty("app.invoice.columns.invoice_date_is_text", "false"));
             String dateFmt = env.getProperty("app.invoice.columns.invoice_date_format", "YYYY-MM-DD");
@@ -439,16 +440,15 @@ public class DashboardController {
                     : ("i." + colDate + "::date");
 
             String whereClause = dateExpr + " >= ? AND " + dateExpr + " < ?";
-            String joinClause = "";
+            // Use invoice.company_type for filtering (consistent with AnalysisController)
             if (companyType != null && !companyType.trim().isEmpty()) {
-                joinClause = " JOIN public.customer c ON CAST(i." + colCust
-                        + " AS TEXT) = CAST(c.customer_seq AS TEXT) ";
-                whereClause += " AND UPPER(c.company_type) = UPPER('" + companyType.trim().replace("'", "''") + "')";
+                whereClause += " AND UPPER(COALESCE(NULLIF(TRIM(i." + colCompanyType + "), ''), '')) = UPPER('"
+                        + companyType.trim().replace("'", "''") + "')";
             }
 
             String sql = "SELECT EXTRACT(DAY FROM " + dateExpr + ")::int AS d, " +
                     " SUM(COALESCE(i." + colAmt + ",0))::double precision AS amount " +
-                    " FROM " + tbl + " i " + joinClause + " WHERE " + whereClause + " GROUP BY 1 ORDER BY 1";
+                    " FROM " + tbl + " i WHERE " + whereClause + " GROUP BY 1 ORDER BY 1";
             java.util.List<java.util.Map<String, Object>> rows = jdbc.query(sql, (rs, i) -> {
                 java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
                 m.put("day", rs.getInt(1));
@@ -802,7 +802,8 @@ public class DashboardController {
     public ResponseEntity<?> dailyActivity(
             @RequestParam("from") String fromStr,
             @RequestParam("to") String toStr,
-            @RequestParam(value = "depts", required = false) String deptsCsv) {
+            @RequestParam(value = "depts", required = false) String deptsCsv,
+            @RequestParam(value = "activityType", required = false, defaultValue = "ALL") String activityType) {
         try {
             LocalDate from = LocalDate.parse(fromStr);
             LocalDate to = LocalDate.parse(toStr); // inclusive
@@ -837,25 +838,63 @@ public class DashboardController {
                 in = sb.toString();
             }
 
-            String sql = "SELECT e.emp_id, e.assignee_id, e.emp_name, e.dept_name, " +
-                    "       sa.planned_start_at::date AS d, " +
-                    "       COUNT(*) AS planned, " +
-                    "       SUM(CASE WHEN (LOWER(BTRIM(sa.activity_status)) IN ('completed') OR BTRIM(sa.activity_status) IN ('완료')) THEN 1 ELSE 0 END) AS completed "
-                    +
-                    "  FROM public.employee e " +
-                    "  JOIN public.sales_activity sa ON CAST(sa.sf_owner_id AS TEXT) = CAST(e.assignee_id AS TEXT) " +
-                    " WHERE sa.planned_start_at >= ? AND sa.planned_start_at < ? " +
-                    (in == null ? "" : " AND e.dept_name IN " + in) +
-                    " GROUP BY e.emp_id, e.assignee_id, e.emp_name, e.dept_name, sa.planned_start_at::date " +
-                    " ORDER BY e.emp_name, d";
+            String type = activityType == null ? "ALL" : activityType.toUpperCase().trim();
+            boolean includeSales = "ALL".equals(type) || "SALES".equals(type);
+            boolean includeRegion = "ALL".equals(type) || "REGION".equals(type);
+
+            StringBuilder sql = new StringBuilder();
+            sql.append("WITH daily_activities AS ( ");
+
+            if (includeSales) {
+                sql.append("  SELECT sa.sf_owner_id AS owner_id, ");
+                sql.append("         sa.planned_start_at::date AS d, ");
+                sql.append("         1 AS planned, ");
+                sql.append(
+                        "         CASE WHEN (LOWER(BTRIM(sa.activity_status)) IN ('completed') OR BTRIM(sa.activity_status) IN ('완료')) THEN 1 ELSE 0 END AS completed ");
+                sql.append("    FROM public.sales_activity sa ");
+                sql.append("   WHERE sa.planned_start_at >= ? AND sa.planned_start_at < ? ");
+            }
+
+            if (includeSales && includeRegion) {
+                sql.append("  UNION ALL ");
+            }
+
+            if (includeRegion) {
+                sql.append("  SELECT rap.assignee_id AS owner_id, ");
+                sql.append("         rap.planned_start_at::date AS d, ");
+                sql.append("         1 AS planned, ");
+                sql.append("         CASE WHEN rap.actual_start_at IS NOT NULL THEN 1 ELSE 0 END AS completed ");
+                sql.append("    FROM public.region_activity_plan rap ");
+                sql.append("   WHERE rap.planned_start_at >= ? AND rap.planned_start_at < ? ");
+            }
+
+            sql.append("), aggregated_daily AS ( ");
+            sql.append("  SELECT owner_id, d, SUM(planned) AS planned, SUM(completed) AS completed ");
+            sql.append("    FROM daily_activities ");
+            sql.append("   GROUP BY owner_id, d ");
+            sql.append(") ");
+
+            sql.append("SELECT e.emp_id, e.assignee_id, e.emp_name, e.dept_name, ");
+            sql.append("       ad.d, COALESCE(ad.planned, 0) AS planned, COALESCE(ad.completed, 0) AS completed ");
+            sql.append("  FROM public.employee e ");
+            sql.append(
+                    "  JOIN aggregated_daily ad ON CAST(ad.owner_id AS TEXT) = CAST(e.assignee_id AS TEXT) ");
+            sql.append(in == null ? "" : " WHERE e.dept_name IN " + in);
+            sql.append(" ORDER BY e.emp_name, ad.d");
 
             java.util.List<Object> params = new java.util.ArrayList<>();
-            params.add(java.sql.Date.valueOf(from));
-            params.add(java.sql.Date.valueOf(to.plusDays(1))); // exclusive end
+            if (includeSales) {
+                params.add(java.sql.Date.valueOf(from));
+                params.add(java.sql.Date.valueOf(to.plusDays(1)));
+            }
+            if (includeRegion) {
+                params.add(java.sql.Date.valueOf(from));
+                params.add(java.sql.Date.valueOf(to.plusDays(1)));
+            }
             if (in != null)
                 params.addAll(target);
 
-            java.util.List<java.util.Map<String, Object>> rows = jdbc.query(sql, ps -> {
+            java.util.List<java.util.Map<String, Object>> rows = jdbc.query(sql.toString(), ps -> {
                 for (int idx = 0; idx < params.size(); idx++) {
                     ps.setObject(idx + 1, params.get(idx));
                 }
@@ -876,6 +915,151 @@ public class DashboardController {
             log.error("Daily activity failed", e);
             return ResponseEntity.status(500)
                     .body(java.util.Map.of("error", "daily_activity_failed", "message", e.getMessage()));
+        }
+    }
+
+    /**
+     * AR Aging Analysis
+     * GET /api/v1/dashboard/arrears?companyType=TNT
+     */
+    /**
+     * Region-based Activity Analysis (for Map Display)
+     * Returns activity counts grouped by addr_city_name (시/도)
+     * GET /api/v1/dashboard/activity-by-region?year=2025&activityType=ALL
+     */
+    @GetMapping("/activity-by-region")
+    public ResponseEntity<?> activityByRegion(
+            @RequestParam(value = "year", required = false) Integer year,
+            @RequestParam(value = "month", required = false) Integer month,
+            @RequestParam(value = "week", required = false) Integer week,
+            @RequestParam(value = "activityType", required = false, defaultValue = "ALL") String activityType) {
+        try {
+            int targetYear = (year != null) ? year : LocalDate.now().getYear();
+
+            String type = activityType == null ? "ALL" : activityType.toUpperCase().trim();
+            boolean includeSales = "ALL".equals(type) || "SALES".equals(type);
+            boolean includeRegion = "ALL".equals(type) || "REGION".equals(type);
+
+            StringBuilder sql = new StringBuilder();
+            // Join sales_activity.sf_account_id with customer.customer_id to get
+            // addr_city_name
+            // For region_activity_plan, join customer_seq with customer.customer_seq
+            sql.append("WITH sales_activities AS ( ");
+
+            if (includeSales) {
+                sql.append("  SELECT c.addr_province_name AS city_name, ");
+                sql.append("         c.addr_city_name AS province_name, ");
+                sql.append("         1 AS planned, ");
+                sql.append(
+                        "         CASE WHEN (LOWER(TRIM(sa.activity_status)) IN ('completed') OR TRIM(sa.activity_status) IN ('완료')) THEN 1 ELSE 0 END AS completed ");
+                sql.append("    FROM public.sales_activity sa ");
+                sql.append("    LEFT JOIN public.customer c ON TRIM(sa.sf_account_id) = TRIM(c.customer_id) ");
+                sql.append("   WHERE EXTRACT(YEAR FROM sa.planned_start_at) = ? ");
+                if (month != null) {
+                    sql.append("     AND EXTRACT(MONTH FROM sa.planned_start_at) = ").append(month).append(" ");
+                }
+                if (week != null) {
+                    sql.append("     AND EXTRACT(WEEK FROM sa.planned_start_at) = ").append(week).append(" ");
+                }
+            }
+
+            if (includeSales && includeRegion) {
+                sql.append("  UNION ALL ");
+            }
+
+            if (includeRegion) {
+                sql.append("  SELECT rap.addr_province_name AS city_name, ");
+                sql.append("         rap.addr_district_name AS province_name, ");
+                sql.append("         1 AS planned, ");
+                sql.append("         CASE WHEN rap.actual_start_at IS NOT NULL THEN 1 ELSE 0 END AS completed ");
+                sql.append("    FROM public.region_activity_plan rap ");
+                sql.append("   WHERE EXTRACT(YEAR FROM rap.planned_start_at) = ? ");
+                if (month != null) {
+                    sql.append("     AND EXTRACT(MONTH FROM rap.planned_start_at) = ").append(month).append(" ");
+                }
+                if (week != null) {
+                    sql.append("     AND EXTRACT(WEEK FROM rap.planned_start_at) = ").append(week).append(" ");
+                }
+            }
+
+            sql.append(") ");
+            sql.append("SELECT COALESCE(NULLIF(city_name, ''), NULLIF(province_name, '')) AS region, ");
+            sql.append("       SUM(planned) AS total_count, ");
+            sql.append("       SUM(completed) AS completed_count ");
+            sql.append("  FROM sales_activities ");
+            sql.append(
+                    " WHERE COALESCE(NULLIF(city_name, ''), NULLIF(province_name, '')) IS NOT NULL ");
+            sql.append(" GROUP BY COALESCE(NULLIF(city_name, ''), NULLIF(province_name, '')) ");
+            sql.append(" ORDER BY SUM(completed) DESC ");
+
+            java.util.List<Object> params = new java.util.ArrayList<>();
+            if (includeSales)
+                params.add(targetYear);
+            if (includeRegion)
+                params.add(targetYear);
+
+            java.util.List<java.util.Map<String, Object>> rows = jdbc.query(sql.toString(), ps -> {
+                for (int idx = 0; idx < params.size(); idx++) {
+                    ps.setObject(idx + 1, params.get(idx));
+                }
+            }, (rs, i) -> {
+                java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+                m.put("region", rs.getString("region"));
+                m.put("totalCount", rs.getInt("total_count"));
+                m.put("completedCount", rs.getInt("completed_count"));
+                return m;
+            });
+
+            return ResponseEntity.ok(rows);
+        } catch (Exception e) {
+            log.error("Activity by region failed", e);
+            return ResponseEntity.status(500)
+                    .body(java.util.Map.of("error", "activity_by_region_failed", "message", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/arrears")
+    public ResponseEntity<?> arrears(@RequestParam(value = "companyType", required = false) String companyType) {
+        try {
+            String tbl = "public.credit_ar_aging";
+            String whereClause = " WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM " + tbl + ") ";
+
+            if (companyType != null && !companyType.trim().isEmpty() && !"ALL".equalsIgnoreCase(companyType)) {
+                whereClause += " AND company_type = '" + companyType.trim() + "' ";
+            }
+
+            String sql = "SELECT customer_name, dept_name, emp_name, total_ar, " +
+                    "aging_0_30, aging_31_60, aging_61_90, aging_91_120, " +
+                    "aging_121_150, aging_151_180, aging_181_210, aging_211_240, " +
+                    "aging_241_270, aging_271_300, aging_301_330, aging_331_365, aging_over_365 " +
+                    "FROM " + tbl + whereClause + " ORDER BY total_ar DESC";
+
+            java.util.List<java.util.Map<String, Object>> rows = jdbc.query(sql, (rs, i) -> {
+                java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+                m.put("customerName", rs.getString("customer_name"));
+                m.put("deptName", rs.getString("dept_name"));
+                m.put("empName", rs.getString("emp_name"));
+                m.put("totalAr", rs.getBigDecimal("total_ar"));
+                m.put("m1", rs.getBigDecimal("aging_0_30"));
+                m.put("m2", rs.getBigDecimal("aging_31_60"));
+                m.put("m3", rs.getBigDecimal("aging_61_90"));
+                m.put("m4", rs.getBigDecimal("aging_91_120"));
+                m.put("m5", rs.getBigDecimal("aging_121_150"));
+                m.put("m6", rs.getBigDecimal("aging_151_180"));
+                m.put("m7", rs.getBigDecimal("aging_181_210"));
+                m.put("m8", rs.getBigDecimal("aging_211_240"));
+                m.put("m9", rs.getBigDecimal("aging_241_270"));
+                m.put("m10", rs.getBigDecimal("aging_271_300"));
+                m.put("m11", rs.getBigDecimal("aging_301_330"));
+                m.put("m12", rs.getBigDecimal("aging_331_365"));
+                m.put("over12", rs.getBigDecimal("aging_over_365"));
+                return m;
+            });
+
+            return ResponseEntity.ok(rows);
+        } catch (Exception ex) {
+            log.error("[Dashboard] arrears failed: {}", ex.toString());
+            return ResponseEntity.status(500).body(java.util.Map.of("error", "dashboard_arrears_failed"));
         }
     }
 }
