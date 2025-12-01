@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-PROFILE="postgres"          # default DB profile
+PROFILE="postgres-local"    # default DB profile (local dev)
 USE_NODB="0"                # nodb stub off by default
 API_PORT="8080"             # backend port
 API_HOST="127.0.0.1"        # backend host

@@ -2,6 +2,9 @@ package com.tnt.sales.activity.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tnt.sales.activity.config.ActivityAITableConfig;
+import com.tnt.sales.activity.config.ActivityAITableConfig.TableDefinition;
+import com.tnt.sales.activity.config.ActivityAITableConfig.FieldDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +36,9 @@ public class ActivityAnalysisAIController {
     @Qualifier("pgJdbcTemplate")
     JdbcTemplate pgJdbc;
 
+    @Autowired
+    private ActivityAITableConfig tableConfig;
+
     @Value("${app.gemini.apiKey:}")
     private String geminiApiKey;
 
@@ -45,8 +51,10 @@ public class ActivityAnalysisAIController {
     @PostMapping("/analyze")
     public ResponseEntity<?> analyzeActivities(@RequestBody Map<String, Object> request) {
         String question = (String) request.get("question");
+        String assigneeId = (String) request.get("assigneeId");
+        String empName = (String) request.get("empName");
 
-        log.info("analyzeActivities called with question: {}", question);
+        log.info("analyzeActivities called with question: {}, assigneeId: {}, empName: {}", question, assigneeId, empName);
 
         if (question == null || question.trim().isEmpty()) {
             return ResponseEntity.ok(Map.of("error", "Question is required"));
@@ -61,15 +69,16 @@ public class ActivityAnalysisAIController {
         }
 
         try {
-            // Step 1: Parse question to extract time period and employee info using AI
-            Map<String, String> parsedInfo = parseQuestionWithAI(question);
+            // Step 1: Parse question to extract time period and determine if filtering by user
+            Map<String, Object> parsedInfo = parseQuestionWithAI(question, assigneeId, empName);
 
-            String employeeId = parsedInfo.getOrDefault("employeeId", null);
-            String startDate = parsedInfo.getOrDefault("startDate", null);
-            String endDate = parsedInfo.getOrDefault("endDate", null);
+            String startDate = (String) parsedInfo.getOrDefault("startDate", null);
+            String endDate = (String) parsedInfo.getOrDefault("endDate", null);
+            boolean filterByUser = (Boolean) parsedInfo.getOrDefault("filterByUser", false);
+            String effectiveAssigneeId = filterByUser ? assigneeId : null;
 
-            // Step 2: Fetch activity data from database
-            String activityData = fetchActivityData(employeeId, startDate, endDate);
+            // Step 2: Fetch activity data from database using config-based dynamic queries
+            String activityData = fetchActivityDataFromConfig(startDate, endDate, effectiveAssigneeId);
 
             if (activityData == null || activityData.trim().isEmpty()) {
                 return ResponseEntity.ok(Map.of("error", "해당 기간에 활동 데이터가 없습니다."));
@@ -93,36 +102,81 @@ public class ActivityAnalysisAIController {
     }
 
     /**
-     * Parse natural language question to extract employee ID and date range using AI
+     * 설정된 테이블 목록 조회 API
      */
-    private Map<String, String> parseQuestionWithAI(String question) throws Exception {
-        Map<String, String> result = new HashMap<>();
+    @GetMapping("/tables")
+    public ResponseEntity<?> getTables() {
+        List<Map<String, Object>> tables = new ArrayList<>();
+        for (TableDefinition table : tableConfig.getEnabledTables()) {
+            Map<String, Object> tableInfo = new LinkedHashMap<>();
+            tableInfo.put("name", table.getName());
+            tableInfo.put("displayName", table.getDisplayName());
+            tableInfo.put("enabled", table.isEnabled());
+            tableInfo.put("dateColumn", table.getDateColumn());
+            tableInfo.put("limit", table.getLimit());
+            tables.add(tableInfo);
+        }
+        return ResponseEntity.ok(Map.of("tables", tables));
+    }
+
+    /**
+     * 설정 파일 리로드 API
+     */
+    @PostMapping("/reload-config")
+    public ResponseEntity<?> reloadConfig() {
+        try {
+            tableConfig.loadConfig();
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "설정이 리로드되었습니다.",
+                "tableCount", tableConfig.getEnabledTables().size()
+            ));
+        } catch (Exception e) {
+            log.error("Failed to reload config", e);
+            return ResponseEntity.ok(Map.of(
+                "success", false,
+                "error", e.getMessage()
+            ));
+        }
+    }
+
+    /**
+     * Parse natural language question to extract date range and determine if filtering by user
+     */
+    private Map<String, Object> parseQuestionWithAI(String question, String assigneeId, String empName) throws Exception {
+        Map<String, Object> result = new HashMap<>();
         java.time.LocalDate today = java.time.LocalDate.now();
 
-        // Use AI to parse the date range from natural language
+        // Use AI to parse the date range and detect if user wants their own activities
         String dateParsePrompt = String.format("""
             오늘 날짜: %s (%s)
+            로그인 사용자: %s
 
             사용자 질문: "%s"
 
-            위 질문에서 날짜 범위를 추출하세요. 한 주는 월요일부터 일요일까지입니다.
+            위 질문을 분석하여 다음 정보를 추출하세요:
 
-            날짜 표현 예시:
-            - "금주", "이번 주", "이번주", "this week" → 이번 주 월요일~일요일
-            - "차주", "다음 주", "다음주", "next week" → 다음 주 월요일~일요일
-            - "익주" → 다다음 주 월요일~일요일
-            - "지난주", "전주", "last week" → 지난 주 월요일~일요일
-            - "이번 달", "this month" → 이번 달 1일~오늘
-            - "지난달", "last month" → 지난 달 1일~마지막 날
-            - 날짜 표현이 없으면 → 최근 30일
+            1. 날짜 범위 (한 주는 월요일부터 일요일까지):
+               - "금주", "이번 주", "이번주", "this week" → 이번 주 월요일~일요일
+               - "차주", "다음 주", "다음주", "next week" → 다음 주 월요일~일요일
+               - "익주" → 다다음 주 월요일~일요일
+               - "지난주", "전주", "last week" → 지난 주 월요일~일요일
+               - "이번 달", "this month" → 이번 달 1일~오늘
+               - "지난달", "last month" → 지난 달 1일~마지막 날
+               - 날짜 표현이 없으면 → 최근 30일
+
+            2. 본인 활동 필터링 여부:
+               - "우리 팀", "전체", "모든", "팀원들의", "전체 활동", "팀 활동", 특정 다른 사람 이름 언급 → filterByUser: false
+               - 그 외 (명확하지 않거나 "내 활동", "나의 활동", "활동 요약" 등) → filterByUser: true (기본값)
 
             다음 JSON 형식으로만 답변하세요:
-            {"startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD"}
+            {"startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD", "filterByUser": true/false}
 
             JSON만 출력하고 다른 설명은 하지 마세요.
             """,
             today.toString(),
             today.getDayOfWeek().toString(),
+            empName != null ? empName : "알 수 없음",
             question
         );
 
@@ -175,12 +229,21 @@ public class ActivityAnalysisAIController {
                             jsonStr = jsonStr.replaceAll("```json\\s*", "").replaceAll("```\\s*", "").trim();
                         }
 
-                        Map<String, String> dateRange = om.readValue(jsonStr, Map.class);
-                        result.put("startDate", dateRange.get("startDate"));
-                        result.put("endDate", dateRange.get("endDate"));
-                        result.put("employeeId", null);
+                        Map<String, Object> parsedResult = om.readValue(jsonStr, Map.class);
+                        result.put("startDate", (String) parsedResult.get("startDate"));
+                        result.put("endDate", (String) parsedResult.get("endDate"));
+                        // Parse filterByUser - can be Boolean or String
+                        Object filterByUserObj = parsedResult.get("filterByUser");
+                        boolean filterByUser = false;
+                        if (filterByUserObj instanceof Boolean) {
+                            filterByUser = (Boolean) filterByUserObj;
+                        } else if (filterByUserObj instanceof String) {
+                            filterByUser = "true".equalsIgnoreCase((String) filterByUserObj);
+                        }
+                        result.put("filterByUser", filterByUser);
 
-                        log.info("AI parsed date range: {} to {}", dateRange.get("startDate"), dateRange.get("endDate"));
+                        log.info("AI parsed - date range: {} to {}, filterByUser: {}",
+                            parsedResult.get("startDate"), parsedResult.get("endDate"), filterByUser);
                         return result;
                     }
                 }
@@ -193,16 +256,23 @@ public class ActivityAnalysisAIController {
         java.time.LocalDate thirtyDaysAgo = today.minusDays(30);
         result.put("startDate", thirtyDaysAgo.toString());
         result.put("endDate", today.toString());
-        result.put("employeeId", null);
+        // Fallback: 기본값은 본인 활동 (true), 전체/팀 언급 시만 false
+        boolean fallbackFilterByUser = !(question.contains("전체") || question.contains("모든") ||
+            question.contains("팀") || question.contains("우리"));
+        result.put("filterByUser", fallbackFilterByUser);
 
-        log.info("Using default date range: {} to {}", thirtyDaysAgo, today);
+        log.info("Using default date range: {} to {}, filterByUser: {}", thirtyDaysAgo, today, fallbackFilterByUser);
         return result;
     }
 
-    private String fetchActivityData(String employeeId, String startDate, String endDate) {
+    /**
+     * 설정 파일 기반으로 동적 쿼리 실행
+     * @param assigneeId 사용자 필터링용 assigneeId (null이면 전체 조회)
+     */
+    private String fetchActivityDataFromConfig(String startDate, String endDate, String assigneeId) {
         StringBuilder data = new StringBuilder();
 
-        log.info("fetchActivityData called - employeeId: {}, startDate: {}, endDate: {}", employeeId, startDate, endDate);
+        log.info("fetchActivityDataFromConfig called - startDate: {}, endDate: {}, assigneeId: {}", startDate, endDate, assigneeId);
 
         try {
             // Validate date format
@@ -214,295 +284,97 @@ public class ActivityAnalysisAIController {
                 endTimestamp = java.sql.Timestamp.valueOf(endDate + " 23:59:59");
             } catch (IllegalArgumentException e) {
                 log.error("Invalid date format - startDate: {}, endDate: {}", startDate, endDate, e);
-                throw new Exception("날짜 형식이 올바르지 않습니다: " + e.getMessage());
+                return null;
             }
 
-            // 1. sales_activity 데이터
-            String salesActivitySql;
-            List<Map<String, Object>> salesActivities;
+            // 설정된 각 테이블에 대해 쿼리 실행
+            for (TableDefinition table : tableConfig.getEnabledTables()) {
+                try {
+                    String sql = table.getSql()
+                            .replace(":startDate", "?")
+                            .replace(":endDate", "?")
+                            .replace(":limit", String.valueOf(table.getLimit()));
 
-            if (employeeId != null && !employeeId.trim().isEmpty()) {
-                salesActivitySql = """
-                    SELECT
-                        sa.id,
-                        sa.sf_owner_id as emp_id,
-                        e.emp_name as emp_name,
-                        sa.subject,
-                        sa.description,
-                        sa.activity_type,
-                        sa.activity_status,
-                        sa.planned_start_at,
-                        sa.planned_end_at,
-                        sa.actual_start_at,
-                        sa.actual_end_at,
-                        sa.sf_account_id,
-                        sa.sf_contact_id,
-                        c.customer_name as customer_name
-                    FROM public.sales_activity sa
-                    LEFT JOIN public.employee e ON CAST(e.assignee_id AS TEXT) = CAST(sa.sf_owner_id AS TEXT)
-                    LEFT JOIN public.customer c ON (CAST(c.customer_id AS TEXT) = CAST(sa.sf_account_id AS TEXT)
-                                                    OR CAST(c.customer_seq AS TEXT) = CAST(sa.sf_account_id AS TEXT))
-                    WHERE sa.sf_owner_id = ?
-                        AND sa.planned_start_at >= ?
-                        AND sa.planned_start_at <= ?
-                    ORDER BY sa.planned_start_at
-                    LIMIT 100
-                """;
-                salesActivities = pgJdbc.queryForList(
-                    salesActivitySql,
-                    employeeId,
-                    startTimestamp,
-                    endTimestamp
-                );
-            } else {
-                salesActivitySql = """
-                    SELECT
-                        sa.id,
-                        sa.sf_owner_id as emp_id,
-                        e.emp_name as emp_name,
-                        sa.subject,
-                        sa.description,
-                        sa.activity_type,
-                        sa.activity_status,
-                        sa.planned_start_at,
-                        sa.planned_end_at,
-                        sa.actual_start_at,
-                        sa.actual_end_at,
-                        sa.sf_account_id,
-                        sa.sf_contact_id,
-                        c.customer_name as customer_name
-                    FROM public.sales_activity sa
-                    LEFT JOIN public.employee e ON CAST(e.assignee_id AS TEXT) = CAST(sa.sf_owner_id AS TEXT)
-                    LEFT JOIN public.customer c ON (CAST(c.customer_id AS TEXT) = CAST(sa.sf_account_id AS TEXT)
-                                                    OR CAST(c.customer_seq AS TEXT) = CAST(sa.sf_account_id AS TEXT))
-                    WHERE sa.planned_start_at >= ?
-                        AND sa.planned_start_at <= ?
-                    ORDER BY sa.planned_start_at
-                    LIMIT 100
-                """;
-                salesActivities = pgJdbc.queryForList(
-                    salesActivitySql,
-                    startTimestamp,
-                    endTimestamp
-                );
-            }
+                    List<Map<String, Object>> results;
 
-            log.info("sales_activity query returned {} rows", salesActivities.size());
-
-            if (!salesActivities.isEmpty()) {
-                data.append("=== 영업 활동 (Sales Activities) ===\n\n");
-                for (Map<String, Object> activity : salesActivities) {
-                    // 담당자 정보 - 이름 우선, 없으면 ID
-                    String empName = (String) activity.get("emp_name");
-                    String empId = String.valueOf(activity.get("emp_id"));
-                    if (empName != null && !empName.trim().isEmpty()) {
-                        data.append(String.format("담당자: %s\n", empName));
+                    // assigneeId가 있으면 해당 사용자 필터링 적용
+                    if (assigneeId != null && !assigneeId.trim().isEmpty()) {
+                        // SQL에 :assigneeId 플레이스홀더가 있으면 사용, 아니면 직접 WHERE 조건 추가
+                        if (sql.contains(":assigneeId")) {
+                            sql = sql.replace(":assigneeId", "?");
+                            results = pgJdbc.queryForList(sql, startTimestamp, endTimestamp, assigneeId);
+                        } else {
+                            // SQL에 assigneeId 필터가 없는 경우 - 결과에서 필터링
+                            results = pgJdbc.queryForList(sql, startTimestamp, endTimestamp);
+                            // assignee_id 또는 sf_owner_id 컬럼으로 필터링
+                            final String filterAssigneeId = assigneeId;
+                            results = results.stream()
+                                .filter(row -> {
+                                    Object aid = row.get("assignee_id");
+                                    Object sfOwnerId = row.get("sf_owner_id");
+                                    String rowAssigneeId = aid != null ? String.valueOf(aid) : null;
+                                    String rowSfOwnerId = sfOwnerId != null ? String.valueOf(sfOwnerId) : null;
+                                    return filterAssigneeId.equals(rowAssigneeId) || filterAssigneeId.equals(rowSfOwnerId);
+                                })
+                                .toList();
+                        }
                     } else {
-                        data.append(String.format("담당자 ID: %s\n", empId));
+                        results = pgJdbc.queryForList(sql, startTimestamp, endTimestamp);
                     }
 
-                    data.append(String.format("제목: %s\n", activity.get("subject")));
-                    data.append(String.format("유형: %s\n", activity.get("activity_type")));
-                    data.append(String.format("상태: %s\n", activity.get("activity_status")));
-                    data.append(String.format("계획 시작: %s\n", activity.get("planned_start_at")));
+                    log.info("{} query returned {} rows", table.getName(), results.size());
 
-                    // 고객 정보 - 이름 우선, 없으면 ID
-                    String customerName = (String) activity.get("customer_name");
-                    if (customerName != null && !customerName.trim().isEmpty()) {
-                        data.append(String.format("고객: %s\n", customerName));
-                    } else if (activity.get("sf_account_id") != null) {
-                        data.append(String.format("고객 ID: %s\n", activity.get("sf_account_id")));
+                    if (!results.isEmpty()) {
+                        data.append("\n=== ").append(table.getDisplayName()).append(" ===\n\n");
+
+                        for (Map<String, Object> row : results) {
+                            // 설정된 필드 정의에 따라 데이터 포맷팅
+                            for (FieldDefinition field : table.getFields()) {
+                                String value = getFieldValue(row, field);
+                                if (value != null && !value.isEmpty()) {
+                                    data.append(String.format("%s: %s\n", field.getLabel(), value));
+                                }
+                            }
+                            data.append("\n");
+                        }
                     }
-
-                    String description = (String) activity.get("description");
-                    if (description != null && !description.trim().isEmpty()) {
-                        data.append(String.format("상세 내용: %s\n", description));
-                    }
-
-                    data.append("\n");
-                }
-            }
-
-            // 2. region_activity_plan 데이터
-            String regionPlanSql;
-            List<Map<String, Object>> regionPlans;
-
-            if (employeeId != null && !employeeId.trim().isEmpty()) {
-                regionPlanSql = """
-                    SELECT
-                        rap.id,
-                        rap.assignee_id,
-                        e.emp_name as emp_name,
-                        rap.subject,
-                        rap.description,
-                        rap.addr_province_name,
-                        rap.addr_district_name,
-                        rap.planned_start_at,
-                        rap.planned_end_at,
-                        rap.actual_start_at,
-                        rap.actual_end_at
-                    FROM public.region_activity_plan rap
-                    LEFT JOIN public.employee e ON e.assignee_id = rap.assignee_id
-                    WHERE rap.assignee_id = ?
-                        AND rap.planned_start_at >= ?
-                        AND rap.planned_start_at <= ?
-                    ORDER BY rap.planned_start_at
-                    LIMIT 100
-                """;
-                regionPlans = pgJdbc.queryForList(regionPlanSql,
-                    employeeId,
-                    startTimestamp,
-                    endTimestamp);
-            } else {
-                regionPlanSql = """
-                    SELECT
-                        rap.id,
-                        rap.assignee_id,
-                        e.emp_name as emp_name,
-                        rap.subject,
-                        rap.description,
-                        rap.addr_province_name,
-                        rap.addr_district_name,
-                        rap.planned_start_at,
-                        rap.planned_end_at,
-                        rap.actual_start_at,
-                        rap.actual_end_at
-                    FROM public.region_activity_plan rap
-                    LEFT JOIN public.employee e ON e.assignee_id = rap.assignee_id
-                    WHERE rap.planned_start_at >= ?
-                        AND rap.planned_start_at <= ?
-                    ORDER BY rap.planned_start_at
-                    LIMIT 100
-                """;
-                regionPlans = pgJdbc.queryForList(regionPlanSql,
-                    startTimestamp,
-                    endTimestamp);
-            }
-
-            log.info("region_activity_plan query returned {} rows", regionPlans.size());
-
-            if (!regionPlans.isEmpty()) {
-                data.append("\n=== 지역 활동 계획 (Region Activity Plans) ===\n\n");
-                for (Map<String, Object> plan : regionPlans) {
-                    // 담당자 정보 - 이름 우선, 없으면 ID
-                    String empName = (String) plan.get("emp_name");
-                    String assigneeId = String.valueOf(plan.get("assignee_id"));
-                    if (empName != null && !empName.trim().isEmpty()) {
-                        data.append(String.format("담당자: %s\n", empName));
-                    } else {
-                        data.append(String.format("담당자 ID: %s\n", assigneeId));
-                    }
-
-                    data.append(String.format("제목: %s\n", plan.get("subject")));
-                    data.append(String.format("지역: %s %s\n",
-                        plan.get("addr_province_name"),
-                        plan.get("addr_district_name")));
-                    data.append(String.format("계획 시작: %s\n", plan.get("planned_start_at")));
-
-                    String description = (String) plan.get("description");
-                    if (description != null && !description.trim().isEmpty()) {
-                        data.append(String.format("상세 내용: %s\n", description));
-                    }
-
-                    data.append("\n");
-                }
-            }
-
-            // 3. region_activity_plan_target 데이터
-            String regionTargetSql;
-            List<Map<String, Object>> regionTargets;
-
-            if (employeeId != null && !employeeId.trim().isEmpty()) {
-                regionTargetSql = """
-                    SELECT
-                        rapt.id,
-                        rapt.region_activity_plan_id,
-                        rapt.assignee_id,
-                        e.emp_name as emp_name,
-                        rapt.activity_plan_content,
-                        rapt.activity_result_content,
-                        rapt.opinion_remark,
-                        rapt.is_completed,
-                        rapt.created_at
-                    FROM public.region_activity_plan_target rapt
-                    LEFT JOIN public.employee e ON e.assignee_id = rapt.assignee_id
-                    WHERE rapt.assignee_id = ?
-                        AND rapt.created_at >= ?
-                        AND rapt.created_at <= ?
-                    ORDER BY rapt.created_at
-                    LIMIT 100
-                """;
-                regionTargets = pgJdbc.queryForList(regionTargetSql,
-                    employeeId,
-                    startTimestamp,
-                    endTimestamp);
-            } else {
-                regionTargetSql = """
-                    SELECT
-                        rapt.id,
-                        rapt.region_activity_plan_id,
-                        rapt.assignee_id,
-                        e.emp_name as emp_name,
-                        rapt.activity_plan_content,
-                        rapt.activity_result_content,
-                        rapt.opinion_remark,
-                        rapt.is_completed,
-                        rapt.created_at
-                    FROM public.region_activity_plan_target rapt
-                    LEFT JOIN public.employee e ON e.assignee_id = rapt.assignee_id
-                    WHERE rapt.created_at >= ?
-                        AND rapt.created_at <= ?
-                    ORDER BY rapt.created_at
-                    LIMIT 100
-                """;
-                regionTargets = pgJdbc.queryForList(regionTargetSql,
-                    startTimestamp,
-                    endTimestamp);
-            }
-
-            log.info("region_activity_plan_target query returned {} rows", regionTargets.size());
-
-            if (!regionTargets.isEmpty()) {
-                data.append("\n=== 지역 활동 목표 (Region Activity Targets) ===\n\n");
-                for (Map<String, Object> target : regionTargets) {
-                    // 담당자 정보 - 이름 우선, 없으면 ID
-                    String empName = (String) target.get("emp_name");
-                    String assigneeId = String.valueOf(target.get("assignee_id"));
-                    if (empName != null && !empName.trim().isEmpty()) {
-                        data.append(String.format("담당자: %s\n", empName));
-                    } else {
-                        data.append(String.format("담당자 ID: %s\n", assigneeId));
-                    }
-
-                    data.append(String.format("완료 여부: %s\n", target.get("is_completed")));
-
-                    String planContent = (String) target.get("activity_plan_content");
-                    if (planContent != null && !planContent.trim().isEmpty()) {
-                        data.append(String.format("활동 계획: %s\n", planContent));
-                    }
-
-                    String resultContent = (String) target.get("activity_result_content");
-                    if (resultContent != null && !resultContent.trim().isEmpty()) {
-                        data.append(String.format("활동 결과: %s\n", resultContent));
-                    }
-
-                    String opinion = (String) target.get("opinion_remark");
-                    if (opinion != null && !opinion.trim().isEmpty()) {
-                        data.append(String.format("의견: %s\n", opinion));
-                    }
-
-                    data.append("\n");
+                } catch (Exception e) {
+                    log.warn("Failed to query table {}: {}", table.getName(), e.getMessage());
                 }
             }
 
         } catch (Exception e) {
-            log.error("Failed to fetch activity data", e);
+            log.error("Failed to fetch activity data from config", e);
             return null;
         }
 
         String result = data.toString();
-        log.info("fetchActivityData returning {} characters of data", result.length());
+        log.info("fetchActivityDataFromConfig returning {} characters of data", result.length());
         return result;
+    }
+
+    /**
+     * 필드 값 추출 (fallback 지원)
+     */
+    private String getFieldValue(Map<String, Object> row, FieldDefinition field) {
+        Object value = row.get(field.getColumn());
+
+        // 값이 null이거나 비어있으면 fallback 컬럼 확인
+        if (value == null || value.toString().trim().isEmpty() || "null".equals(value.toString())) {
+            if (field.getFallback() != null) {
+                Object fallbackValue = row.get(field.getFallback());
+                if (fallbackValue != null && !fallbackValue.toString().trim().isEmpty()) {
+                    return fallbackValue.toString();
+                }
+            }
+            // optional 필드이면 null 반환 (출력 안 함)
+            if (field.isOptional()) {
+                return null;
+            }
+            return null;
+        }
+
+        return value.toString();
     }
 
     private String analyzeWithGemini(String question, String activityData) throws Exception {

@@ -51,7 +51,18 @@ const PromotionPanel = lazy(() =>
 )
 const StandardUI = React.lazy(() => import('./features/standard_ui/StandardUI').then(m => ({ default: m.StandardUI })))
 const StandardInquiry = React.lazy(() => import('./features/lab/standard_inquiry/StandardInquiry').then(m => ({ default: m.StandardInquiry })))
-const StandardUICD = React.lazy(() => import('./features/lab/StandardUICD').then(m => ({ default: m.StandardUICD })))
+const StandardUICD1 = React.lazy(() => import('./features/lab/StandardUICD1').then(m => ({ default: m.StandardUICD1 })))
+const StandardUICD2 = React.lazy(() => import('./features/lab/StandardUICD2').then(m => ({ default: m.StandardUICD2 })))
+const StandardUICD3 = React.lazy(() => import('./features/lab/StandardUICD3').then(m => ({ default: m.StandardUICD3 })))
+const StandardNavigation1 = React.lazy(() => import('./features/lab/StandardNavigation1').then(m => ({ default: m.StandardNavigation1 })))
+const StandardNavigation2 = React.lazy(() => import('./features/lab/StandardNavigation2').then(m => ({ default: m.StandardNavigation2 })))
+const StandardNavigation3 = React.lazy(() => import('./features/lab/StandardNavigation3').then(m => ({ default: m.StandardNavigation3 })))
+const StandardC360 = React.lazy(() => import('./features/lab/StandardC360').then(m => ({ default: m.StandardC360 })))
+const StandardMap = React.lazy(() => import('./features/lab/StandardMap').then(m => ({ default: m.StandardMap })))
+const QuotePage = React.lazy(() => import('./features/lab/quote/QuotePage').then(m => ({ default: m.QuotePage })))
+const QuoteList = React.lazy(() => import('./features/quote/QuoteList').then(m => ({ default: m.QuoteList })))
+const QuoteForm = React.lazy(() => import('./features/quote/QuoteForm').then(m => ({ default: m.QuoteForm })))
+const TNTChatRightPanel = React.lazy(() => import('./features/lab/TNTChatRightPanel').then(m => ({ default: m.TNTChatRightPanel })))
 
 export default function App() {
   // selection key format example: 'calendar', 'demand', 'demand:excel-upload'
@@ -209,8 +220,18 @@ export default function App() {
               {selectedKey === 'demand:list' ? (<DemandList />) :
                 selectedKey === 'lab:standard-ui' ? (<StandardUI />) :
                   selectedKey === 'lab:standard-inquiry' ? (<StandardInquiry />) :
-                    selectedKey === 'lab:standard-ui-cd' ? (<StandardUICD />) :
-                      (<MainView selectedKey={selectedKey} />)}
+                    selectedKey === 'lab:standard-ui-cd1' ? (<StandardUICD1 />) :
+                      selectedKey === 'lab:standard-ui-cd2' ? (<StandardUICD2 />) :
+                        selectedKey === 'lab:standard-ui-cd3' ? (<StandardUICD3 />) :
+                          selectedKey === 'lab:standard-nav1' ? (<StandardNavigation1 />) :
+                            selectedKey === 'lab:standard-nav2' ? (<StandardNavigation2 />) :
+                              selectedKey === 'lab:standard-nav3' ? (<StandardNavigation3 />) :
+                                selectedKey === 'lab:standard-c360' ? (<StandardC360 />) :
+                                  selectedKey === 'lab:standard-map' ? (<StandardMap />) :
+                                    selectedKey === 'lab:quote' ? (<QuotePage />) :
+                                      selectedKey === 'quote' ? (<QuoteList />) :
+                                        selectedKey === 'quote:new' ? (<QuoteForm />) :
+                                          (<MainView selectedKey={selectedKey} />)}
             </Suspense>
           ) : (
             <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
@@ -291,6 +312,10 @@ export default function App() {
               ) : selectedKey === 'inventory:expiry-ag' ? (
                 <div className="fill">
                   <PromotionPanel selectedItemsCount={expirySelectionCount} onApplyPromotion={handleApplyPromotion} />
+                </div>
+              ) : selectedKey === 'lab:tnt-chat' ? (
+                <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                  <TNTChatRightPanel />
                 </div>
               ) : (
                 <div className="placeholder">향후 기능을 위해 예약된 영역</div>

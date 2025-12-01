@@ -71,7 +71,7 @@ export function MobileOrderForm({ onBack }: { onBack?: () => void }) {
       const params = new URLSearchParams()
       params.set('name', customerQuery.trim())
       params.set('mineOnly', 'false')
-      const r = await fetch(`/api/v1/customers?${params.toString()}`)
+      const r = await fetch(`/api/v1/customers?${params.toString()}`, { cache: 'no-store' })
       if (!r.ok) throw new Error(`HTTP ${r.status}`)
       const data = await r.json()
       const list: Customer[] = Array.isArray(data)
@@ -170,6 +170,9 @@ export function MobileOrderForm({ onBack }: { onBack?: () => void }) {
     try {
       const params = new URLSearchParams()
       params.set('q', itemQuery.trim())
+      // Pass companyType and customerSeq for invoice filtering
+      const compType = selectedCustomer?.companyCode
+      if (compType) params.set('companyType', compType)
       if (selectedCustomer?.customerSeq != null) params.set('customerSeq', String(selectedCustomer.customerSeq))
       const r = await fetch(`/api/v1/items/search?${params.toString()}`)
       const data = r.ok ? await r.json() : []
@@ -198,24 +201,21 @@ export function MobileOrderForm({ onBack }: { onBack?: () => void }) {
       return
     }
 
-    let itemSeq = item.itemSeq ?? null
-    let itemStdUnit: string | null = null
+    // Use selected item's itemSeq and companyType directly
+    const itemSeq = item.itemSeq ?? null
+    let itemStdUnit: string | null = item.itemStdUnit ?? null
     let itemSpec = ''
-    let companyType: string | null = null
+    const companyType: string | null = item.companyType ?? null
 
-    // itemName으로 spec API 호출하여 상세 정보 조회 (PC와 동일)
+    // itemName으로 spec API 호출하여 itemSpec, itemStdUnit 조회
     if (item.itemName) {
       try {
         const r = await fetch(`/api/v1/items/spec?itemName=${encodeURIComponent(item.itemName)}`)
         if (r.ok) {
           const data = await r.json().catch(() => null)
-          // spec API에서 가져온 값 사용
-          if (data?.itemSeq) itemSeq = data.itemSeq
-          if (data?.itemStdUnit || data?.item_std_unit) {
+          // spec API에서 itemSpec, itemStdUnit만 가져옴 (itemSeq, companyType은 선택된 품목 값 사용)
+          if (!itemStdUnit && (data?.itemStdUnit || data?.item_std_unit)) {
             itemStdUnit = data?.itemStdUnit ?? data?.item_std_unit
-          }
-          if (data?.companyType) {
-            companyType = data.companyType
           }
           if (data?.itemSpec || data?.item_spec) {
             itemSpec = data?.itemSpec ?? data?.item_spec ?? ''
@@ -233,8 +233,8 @@ export function MobileOrderForm({ onBack }: { onBack?: () => void }) {
         itemName: item.itemName,
         itemSpec: itemSpec || '',
         qty: '',
-        companyType: companyType || null,
-        itemStdUnit: itemStdUnit || null,
+        companyType,
+        itemStdUnit,
       },
     ])
     setNotice({ open: true, text: '담기 완료', type: 'success' })

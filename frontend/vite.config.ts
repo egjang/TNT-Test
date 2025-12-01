@@ -16,6 +16,7 @@ export default defineConfig(({ mode }) => {
           target,
           changeOrigin: true,
           secure: false,
+          timeout: 300000, // 5 minutes for large file uploads
         },
       },
     },

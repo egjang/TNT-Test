@@ -1,0 +1,265 @@
+# AI Agent 매출 분석 테이블 설정
+# 이 파일에서 분석 대상 테이블과 SQL 쿼리를 관리합니다.
+# 새 테이블 추가 시 tables 배열에 항목을 추가하세요.
+
+tables:
+  # 매출 요약 (고객별)
+  - name: invoice_by_customer
+    displayName: 고객별 매출 요약
+    enabled: true
+    dateColumn: invoice_date
+    limit: 50
+    sql: |
+      SELECT
+          i.customer_seq,
+          c.customer_name,
+          i.company_type,
+          COUNT(*) as invoice_count,
+          SUM(i.cur_amt) as total_amount,
+          AVG(i.cur_amt) as avg_amount
+      FROM public.invoice i
+      LEFT JOIN public.customer c ON c.customer_seq = i.customer_seq
+      WHERE i.invoice_date::date >= :startDate
+          AND i.invoice_date::date <= :endDate
+      GROUP BY i.customer_seq, c.customer_name, i.company_type
+      ORDER BY total_amount DESC
+      LIMIT :limit
+    fields:
+      - column: customer_name
+        label: 고객명
+        fallback: customer_seq
+      - column: company_type
+        label: 회사구분
+      - column: invoice_count
+        label: 거래건수
+      - column: total_amount
+        label: 총매출
+      - column: avg_amount
+        label: 평균거래금액
+
+  # 매출 요약 (품목별)
+  - name: invoice_by_item
+    displayName: 품목별 매출 요약
+    enabled: true
+    dateColumn: invoice_date
+    limit: 50
+    sql: |
+      SELECT
+          i.company_type,
+          i.item_seq,
+          it.item_name,
+          it.item_group,
+          it.item_std_unit,
+          SUM(i.qty) as total_qty,
+          SUM(i.cur_amt) as total_amount,
+          AVG(i.cur_amt / NULLIF(i.qty, 0)) as avg_unit_price
+      FROM public.invoice i
+      LEFT JOIN public.item it ON i.company_type = it.company_type AND i.item_seq = it.item_seq
+      WHERE i.invoice_date::date >= :startDate
+          AND i.invoice_date::date <= :endDate
+      GROUP BY i.company_type, i.item_seq, it.item_name, it.item_group, it.item_std_unit
+      ORDER BY total_amount DESC
+      LIMIT :limit
+    fields:
+      - column: item_name
+        label: 품목명
+        fallback: item_seq
+      - column: company_type
+        label: 회사구분
+      - column: item_group
+        label: 품목그룹
+        optional: true
+      - column: item_std_unit
+        label: 단위
+      - column: total_qty
+        label: 총수량
+      - column: total_amount
+        label: 총매출
+      - column: avg_unit_price
+        label: 평균단가
+
+  # 매출 요약 (담당자별)
+  - name: invoice_by_salesperson
+    displayName: 담당자별 매출 요약
+    enabled: true
+    dateColumn: invoice_date
+    limit: 30
+    sql: |
+      SELECT
+          i.curr_emp_name as emp_name,
+          i.company_type,
+          COUNT(DISTINCT i.customer_seq) as customer_count,
+          COUNT(*) as invoice_count,
+          SUM(i.cur_amt) as total_amount
+      FROM public.invoice i
+      WHERE i.invoice_date::date >= :startDate
+          AND i.invoice_date::date <= :endDate
+      GROUP BY i.curr_emp_name, i.company_type
+      ORDER BY total_amount DESC
+      LIMIT :limit
+    fields:
+      - column: emp_name
+        label: 담당자
+      - column: company_type
+        label: 회사구분
+      - column: customer_count
+        label: 고객수
+      - column: invoice_count
+        label: 거래건수
+      - column: total_amount
+        label: 총매출
+
+  # 월별 매출 추이
+  - name: invoice_monthly_trend
+    displayName: 월별 매출 추이
+    enabled: true
+    dateColumn: invoice_date
+    limit: 24
+    sql: |
+      SELECT
+          TO_CHAR(i.invoice_date::date, 'YYYY-MM') as year_month,
+          i.company_type,
+          COUNT(*) as invoice_count,
+          SUM(i.cur_amt) as total_amount
+      FROM public.invoice i
+      WHERE i.invoice_date::date >= :startDate
+          AND i.invoice_date::date <= :endDate
+      GROUP BY TO_CHAR(i.invoice_date::date, 'YYYY-MM'), i.company_type
+      ORDER BY year_month DESC, company_type
+      LIMIT :limit
+    fields:
+      - column: year_month
+        label: 년월
+      - column: company_type
+        label: 회사구분
+      - column: invoice_count
+        label: 거래건수
+      - column: total_amount
+        label: 총매출
+
+  # 최근 거래 상세 (샘플)
+  - name: invoice_recent
+    displayName: 최근 거래 내역
+    enabled: true
+    dateColumn: invoice_date
+    limit: 20
+    sql: |
+      SELECT
+          i.invoice_date::date as invoice_date,
+          c.customer_name,
+          it.item_name,
+          it.item_std_unit,
+          i.company_type,
+          i.qty,
+          i.cur_amt,
+          i.curr_emp_name as emp_name
+      FROM public.invoice i
+      LEFT JOIN public.customer c ON c.customer_seq = i.customer_seq
+      LEFT JOIN public.item it ON i.company_type = it.company_type AND i.item_seq = it.item_seq
+      WHERE i.invoice_date::date >= :startDate
+          AND i.invoice_date::date <= :endDate
+      ORDER BY i.invoice_date::date DESC, i.cur_amt DESC
+      LIMIT :limit
+    fields:
+      - column: invoice_date
+        label: 거래일
+      - column: customer_name
+        label: 고객명
+      - column: item_name
+        label: 품목명
+      - column: item_std_unit
+        label: 단위
+      - column: company_type
+        label: 회사구분
+      - column: qty
+        label: 수량
+      - column: cur_amt
+        label: 금액
+      - column: emp_name
+        label: 담당자
+
+  # 특정 품목 검색 (품목명 기준)
+  - name: invoice_by_item_search
+    displayName: 품목 검색 결과
+    enabled: true
+    dateColumn: invoice_date
+    limit: 100
+    searchable: true
+    searchColumn: item_name
+    sql: |
+      SELECT
+          i.invoice_date::date as invoice_date,
+          c.customer_name,
+          it.item_name,
+          it.item_std_unit,
+          i.company_type,
+          i.qty,
+          i.cur_amt,
+          i.curr_emp_name as emp_name
+      FROM public.invoice i
+      LEFT JOIN public.customer c ON c.customer_seq = i.customer_seq
+      LEFT JOIN public.item it ON i.company_type = it.company_type AND i.item_seq = it.item_seq
+      WHERE i.invoice_date::date >= :startDate
+          AND i.invoice_date::date <= :endDate
+          AND it.item_name ILIKE :searchKeyword
+      ORDER BY i.invoice_date::date DESC, i.cur_amt DESC
+      LIMIT :limit
+    fields:
+      - column: invoice_date
+        label: 거래일
+      - column: customer_name
+        label: 고객명
+      - column: item_name
+        label: 품목명
+      - column: item_std_unit
+        label: 단위
+      - column: company_type
+        label: 회사구분
+      - column: qty
+        label: 수량
+      - column: cur_amt
+        label: 금액
+      - column: emp_name
+        label: 담당자
+
+  # 특정 품목 매출 요약
+  - name: invoice_item_summary_search
+    displayName: 품목별 매출 요약 (검색)
+    enabled: true
+    dateColumn: invoice_date
+    limit: 50
+    searchable: true
+    searchColumn: item_name
+    sql: |
+      SELECT
+          it.item_name,
+          it.item_std_unit,
+          i.company_type,
+          COUNT(DISTINCT c.customer_seq) as customer_count,
+          COUNT(*) as invoice_count,
+          SUM(i.qty) as total_qty,
+          SUM(i.cur_amt) as total_amount
+      FROM public.invoice i
+      LEFT JOIN public.customer c ON c.customer_seq = i.customer_seq
+      LEFT JOIN public.item it ON i.company_type = it.company_type AND i.item_seq = it.item_seq
+      WHERE i.invoice_date::date >= :startDate
+          AND i.invoice_date::date <= :endDate
+          AND it.item_name ILIKE :searchKeyword
+      GROUP BY it.item_name, it.item_std_unit, i.company_type
+      ORDER BY total_amount DESC
+      LIMIT :limit
+    fields:
+      - column: item_name
+        label: 품목명
+      - column: item_std_unit
+        label: 단위
+      - column: company_type
+        label: 회사구분
+      - column: customer_count
+        label: 거래처수
+      - column: invoice_count
+        label: 거래건수
+      - column: total_qty
+        label: 총수량
+      - column: total_amount
+        label: 총매출

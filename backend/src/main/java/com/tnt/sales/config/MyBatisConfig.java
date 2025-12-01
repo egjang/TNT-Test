@@ -11,7 +11,8 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import javax.sql.DataSource;
 
 @Configuration
-@MapperScan(basePackages = "com.tnt.sales.competitor.mapper", sqlSessionFactoryRef = "sqlSessionFactory")
+@MapperScan(basePackages = { "com.tnt.sales.competitor.mapper",
+        "com.tnt.sales.quote.mapper" }, sqlSessionFactoryRef = "sqlSessionFactory")
 public class MyBatisConfig {
 
     @Bean(name = "sqlSessionFactory")

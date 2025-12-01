@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Search, Database, Loader2, Table2, AlertCircle, CheckCircle, Coins } from 'lucide-react'
+import { Search, Database, Loader2, Table2, AlertCircle, CheckCircle, Coins, BookOpen, Cloud, Settings, MessageSquare } from 'lucide-react'
 
 type QueryResult = {
   question: string
@@ -122,6 +122,82 @@ export function VibeWorkspace() {
             >
               <Coins size={16} />
               토큰
+            </button>
+            <button
+              onClick={() => window.open('https://docs.n8n.io/', '_blank')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 16px',
+                background: '#fff',
+                color: '#374151',
+                border: '1px solid #d1d5db',
+                borderRadius: 6,
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >
+              <BookOpen size={16} />
+              n8n 매뉴얼
+            </button>
+            <button
+              onClick={() => window.open('https://tntintl1-my.sharepoint.com/', '_blank')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 16px',
+                background: '#fff',
+                color: '#374151',
+                border: '1px solid #d1d5db',
+                borderRadius: 6,
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >
+              <Cloud size={16} />
+              OneDrive
+            </button>
+            <button
+              onClick={() => window.open('https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade', '_blank')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 16px',
+                background: '#fff',
+                color: '#374151',
+                border: '1px solid #d1d5db',
+                borderRadius: 6,
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >
+              <Settings size={16} />
+              MS 앱
+            </button>
+            <button
+              onClick={() => window.open('https://api.slack.com/apps', '_blank')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 16px',
+                background: '#fff',
+                color: '#374151',
+                border: '1px solid #d1d5db',
+                borderRadius: 6,
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >
+              <MessageSquare size={16} />
+              Slack 앱
             </button>
             <button
               onClick={() => setShowSchema(!showSchema)}

@@ -1,0 +1,564 @@
+{
+  "name": "OneDrive → Google RAG Store → Archive",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "notes": "5분마다 실행 (조정 가능)"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "list",
+        "drive": "me",
+        "folderId": "={{ $json.googleRagFolderId || 'root:/Google RAG' }}",
+        "returnAll": true,
+        "options": {
+          "filter": "file ne null"
+        }
+      },
+      "id": "onedrive-list-files",
+      "name": "OneDrive: List Files",
+      "type": "n8n-nodes-base.microsoftOneDrive",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "your-onedrive-credential-id",
+          "name": "Microsoft OneDrive OAuth2"
+        }
+      },
+      "notes": "Google RAG 폴더의 파일 목록 조회"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.file !== undefined }}",
+              "value2": true
+            }
+          ],
+          "string": [
+            {
+              "value1": "={{ $json.name }}",
+              "operation": "isNotEmpty"
+            },
+            {
+              "value1": "={{ $json.parentReference?.path }}",
+              "operation": "notContains",
+              "value2": "/Archive"
+            }
+          ]
+        }
+      },
+      "id": "filter-files",
+      "name": "Filter: Files Only (Not Archive)",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "notes": "파일만 필터링 (Archive 폴더 제외)"
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-batches",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [900, 300],
+      "notes": "파일 하나씩 처리"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "download",
+        "fileId": "={{ $json.id }}"
+      },
+      "id": "onedrive-download",
+      "name": "OneDrive: Download File",
+      "type": "n8n-nodes-base.microsoftOneDrive",
+      "typeVersion": 1,
+      "position": [1120, 300],
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "your-onedrive-credential-id",
+          "name": "Microsoft OneDrive OAuth2"
+        }
+      },
+      "notes": "OneDrive에서 파일 다운로드"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8080/api/v1/rag/store/upload",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "upload-to-rag-store",
+      "name": "Upload to Google RAG Store",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 300],
+      "notes": "Google RAG Store에 파일 업로드"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.success === true }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-upload-success",
+      "name": "Check: Upload Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1560, 300],
+      "notes": "업로드 성공 여부 확인"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/me/drive/items/{{ $('OneDrive: Download File').item.json.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOneDriveOAuth2Api",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "parentReference",
+              "value": "={{ JSON.stringify({ path: $('OneDrive: List Files').item.json.parentReference.path + '/Archive' }) }}"
+            },
+            {
+              "name": "@microsoft.graph.conflictBehavior",
+              "value": "rename"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "move-to-archive-direct",
+      "name": "Move to Archive (Direct)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 200],
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "your-onedrive-credential-id",
+          "name": "Microsoft OneDrive OAuth2"
+        }
+      },
+      "notes": "Archive 폴더로 파일 이동"
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "operation": "create",
+        "name": "Archive",
+        "parentFolderId": "={{ $('OneDrive: List Files').item.json.parentReference.id }}"
+      },
+      "id": "create-archive-folder",
+      "name": "Create Archive Folder (If Not Exists)",
+      "type": "n8n-nodes-base.microsoftOneDrive",
+      "typeVersion": 1,
+      "position": [1780, 100],
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "your-onedrive-credential-id",
+          "name": "Microsoft OneDrive OAuth2"
+        }
+      },
+      "continueOnFail": true,
+      "notes": "Archive 폴더 생성 (없으면)"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "success"
+            },
+            {
+              "name": "fileName",
+              "value": "={{ $('OneDrive: Download File').item.json.name }}"
+            },
+            {
+              "name": "message",
+              "value": "File uploaded to RAG Store and moved to Archive"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-success-result",
+      "name": "Set Success Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [2000, 200],
+      "notes": "성공 결과 설정"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "failed"
+            },
+            {
+              "name": "fileName",
+              "value": "={{ $('OneDrive: Download File').item.json.name }}"
+            },
+            {
+              "name": "error",
+              "value": "={{ $json.error || 'Upload to RAG Store failed' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-failure-result",
+      "name": "Set Failure Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [1780, 400],
+      "notes": "실패 결과 설정"
+    },
+    {
+      "parameters": {},
+      "id": "merge-results",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [2220, 300],
+      "notes": "성공/실패 결과 병합"
+    },
+    {
+      "parameters": {
+        "operation": "aggregateItems",
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "aggregate-results",
+      "name": "Aggregate All Results",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 3,
+      "position": [2440, 300],
+      "notes": "모든 처리 결과 집계"
+    },
+    {
+      "parameters": {
+        "channel": "#rag-notifications",
+        "text": "=📊 *OneDrive → RAG Store 처리 완료*\n\n처리된 파일: {{ $json.data.length }}개\n\n{{ $json.data.map(item => `• ${item.fileName}: ${item.status === 'success' ? '✅ 성공' : '❌ 실패'}`).join('\\n') }}",
+        "otherOptions": {}
+      },
+      "id": "slack-notification",
+      "name": "Slack: Send Notification",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [2660, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "your-slack-credential-id",
+          "name": "Slack API"
+        }
+      },
+      "notes": "처리 결과 Slack 알림 (선택사항)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8080/api/v1/rag/store/select",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "storeName",
+              "value": "={{ $env.RAG_STORE_NAME || 'fileSearchStores/tntsalesragstore-ofwgajmjgvzo' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "select-rag-store",
+      "name": "Select RAG Store",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 100],
+      "notes": "RAG Store 선택 (초기화)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.length }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "check-files-exist",
+      "name": "Check: Files Exist?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 100],
+      "notes": "처리할 파일이 있는지 확인"
+    },
+    {
+      "parameters": {},
+      "id": "no-files-end",
+      "name": "No Files - End",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [900, 100],
+      "notes": "파일 없으면 종료"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Select RAG Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select RAG Store": {
+      "main": [
+        [
+          {
+            "node": "OneDrive: List Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OneDrive: List Files": {
+      "main": [
+        [
+          {
+            "node": "Check: Files Exist?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Files Exist?": {
+      "main": [
+        [
+          {
+            "node": "Filter: Files Only (Not Archive)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Files - End",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: Files Only (Not Archive)": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [
+          {
+            "node": "OneDrive: Download File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Aggregate All Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OneDrive: Download File": {
+      "main": [
+        [
+          {
+            "node": "Upload to Google RAG Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to Google RAG Store": {
+      "main": [
+        [
+          {
+            "node": "Check: Upload Success?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Upload Success?": {
+      "main": [
+        [
+          {
+            "node": "Create Archive Folder (If Not Exists)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Failure Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Archive Folder (If Not Exists)": {
+      "main": [
+        [
+          {
+            "node": "Move to Archive (Direct)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move to Archive (Direct)": {
+      "main": [
+        [
+          {
+            "node": "Set Success Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Success Result": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Failure Result": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Results": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate All Results": {
+      "main": [
+        [
+          {
+            "node": "Slack: Send Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "RAG",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "name": "OneDrive",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "name": "Automation",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    }
+  ],
+  "triggerCount": 1,
+  "pinData": {}
+}

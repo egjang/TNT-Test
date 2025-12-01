@@ -41,3 +41,6 @@ tnt_sales_dlv/backend/application.yml
 
 # 배포 디렉토리
 tnt_sales_dlv/
+
+# 지도 원본 데이터 (Shapefile 등)
+map_data/

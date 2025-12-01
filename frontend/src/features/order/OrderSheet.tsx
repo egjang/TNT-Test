@@ -119,14 +119,17 @@ export function OrderSheet() {
   }
 
   // Load items for selected customer
-  async function loadItems(forCustomerSeq?: number) {
+  async function loadItems(forCustomer?: Row) {
     try {
       setItemLoading(true)
-      const sel = activeIdx != null ? items[activeIdx] : null
+      // Use passed customer or fallback to selected customer from state
+      const sel = forCustomer ?? (activeIdx != null ? items[activeIdx] : null)
       const params2 = new URLSearchParams()
       params2.set('q', (itemQ.trim() || q.trim()))
-      const cseq = (forCustomerSeq != null ? forCustomerSeq : sel?.customerSeq)
-      if (cseq != null) params2.set('customerSeq', String(cseq))
+      // Pass companyType and customerSeq for invoice filtering
+      const compType = sel?.companyType || sel?.companyCode
+      if (compType) params2.set('companyType', compType)
+      if (sel?.customerSeq != null) params2.set('customerSeq', String(sel.customerSeq))
       const r2 = await fetch(`/api/v1/items/search?${params2.toString()}`)
       const data2 = r2.ok ? await r2.json() : []
       const list2 = Array.isArray(data2) ? data2.map((x: any) => ({
@@ -158,16 +161,13 @@ export function OrderSheet() {
     try {
       let spec: string | undefined = undefined
       let stdUnit: string | undefined = typeof it.itemStdUnit === 'string' ? it.itemStdUnit : undefined
-      let apiCompanyType: string | undefined = undefined
-      const r = await fetch(`/api/v1/items/spec?itemName=${encodeURIComponent(String(it.itemName))}`)
+      // Use selected item's companyType and itemSeq directly
+      const r = await fetch(`/api/v1/items/spec?companyType=${encodeURIComponent(String(it.companyType || ''))}&itemSeq=${encodeURIComponent(String(it.itemSeq))}`)
       if (r.ok) {
         const data = await r.json().catch(() => ({}))
         if (data && data.itemSpec) spec = String(data.itemSpec)
         if (!stdUnit && data && data.itemStdUnit) {
           stdUnit = String(data.itemStdUnit)
-        }
-        if (data && data.companyType) {
-          apiCompanyType = String(data.companyType)
         }
       }
       const cartRaw = localStorage.getItem('tnt.sales.ordersheet.cart')
@@ -178,8 +178,8 @@ export function OrderSheet() {
         setAdding(false)
         return
       } else {
-        const finalCompanyType = apiCompanyType || it.companyType || null
-        const newItem = { itemSeq: it.itemSeq, itemName: it.itemName, itemSpec: spec || '', qty: '', itemStdUnit: stdUnit || it.itemStdUnit || undefined, companyType: finalCompanyType }
+        // Use itemSeq and companyType from selected item directly
+        const newItem = { itemSeq: it.itemSeq, itemName: it.itemName, itemSpec: spec || '', qty: '', itemStdUnit: stdUnit || it.itemStdUnit || undefined, companyType: it.companyType || null }
         currentCart.push(newItem)
       }
       localStorage.setItem('tnt.sales.ordersheet.cart', JSON.stringify(currentCart))
@@ -279,7 +279,7 @@ export function OrderSheet() {
       const params = new URLSearchParams()
       if (q.trim()) params.set('name', q.trim())
       params.set('mineOnly', 'false')
-      const r = await fetch(`/api/v1/customers?${params.toString()}`)
+      const r = await fetch(`/api/v1/customers?${params.toString()}`, { cache: 'no-store' })
       if (!r.ok) throw new Error(`HTTP ${r.status}`)
       const data = await r.json()
       const list: Row[] = Array.isArray(data) ? data.map((x: any) => ({
@@ -299,7 +299,7 @@ export function OrderSheet() {
       if (list.length > 0) {
         setActiveIdx(0)
         selectCustomer(list[0], 0, false) // 검색 시에는 목록 접지 않음
-        await loadItems(list[0]?.customerSeq)
+        await loadItems(list[0])
       } else {
         setActiveIdx(null)
         setItemList([])
@@ -348,7 +348,7 @@ export function OrderSheet() {
       localStorage.setItem('tnt.sales.ordersheet.cart', JSON.stringify([]))
     } catch { }
 
-    loadItems(row.customerSeq)
+    loadItems(row)
     loadInvoiceSummary(row.customerSeq)
   }
 
@@ -395,8 +395,8 @@ export function OrderSheet() {
   }
 
   // Resolve item by name
-  function getSelectedCustomerSeq(): number | null {
-    try { const raw = localStorage.getItem('tnt.sales.ordersheet.selectedCustomer'); if (!raw) return null; const o = JSON.parse(raw); const v = Number(o?.customerSeq); return Number.isFinite(v) ? v : null } catch { return null }
+  function getSelectedCustomer(): { companyType?: string; companyCode?: string; customerSeq?: number } | null {
+    try { const raw = localStorage.getItem('tnt.sales.ordersheet.selectedCustomer'); if (!raw) return null; return JSON.parse(raw) } catch { return null }
   }
 
   async function resolveItemByName(name: string): Promise<{ itemSeq: any; itemName: string } | null> {
@@ -405,7 +405,9 @@ export function OrderSheet() {
     try {
       const params = new URLSearchParams()
       params.set('q', name)
-      const cseq = getSelectedCustomerSeq(); if (cseq != null) params.set('customerSeq', String(cseq))
+      const selCust = getSelectedCustomer()
+      const compType = selCust?.companyType || selCust?.companyCode; if (compType) params.set('companyType', compType)
+      if (selCust?.customerSeq != null) params.set('customerSeq', String(selCust.customerSeq))
       const r = await fetch(`/api/v1/items/search?${params.toString()}`)
       const data = r.ok ? await r.json() : []
       const list = Array.isArray(data) ? data : []

@@ -17,6 +17,7 @@ $ARGUMENTS
    - **IF EXISTS**: Read contracts/ for API specifications and test requirements
    - **IF EXISTS**: Read research.md for technical decisions and constraints
    - **IF EXISTS**: Read quickstart.md for integration scenarios
+   - **FRONTEND UI WORK**: Read `STANDARD_UI_GUIDE.md` (repo root) and align with standard components/patterns, especially for `frontend/src/features/lab/*` screens/components.
 
 3. Parse tasks.md structure and extract:
    - **Task phases**: Setup, Tests, Core, Integration, Polish

@@ -103,7 +103,7 @@ export function ActivityAnalysisAG() {
                     const { start, end } = getDateRangeOfWeek(year, week as number)
                     const from = start.toISOString().split('T')[0]
                     const to = end.toISOString().split('T')[0]
-                    const res = await fetch(`/api/v1/dashboard/daily-activity?from=${from}&to=${to}`)
+                    const res = await fetch(`/api/v1/dashboard/daily-activity?from=${from}&to=${to}&activityType=${searchParams.activityType.toUpperCase()}`)
                     if (res.ok) setDailyData(await res.json())
                 } else if (month !== 'all') {
                     // Month Mode: Fetch Daily Data for that month
@@ -111,7 +111,7 @@ export function ActivityAnalysisAG() {
                     const end = new Date(year, (month as number), 0)
                     const from = start.toISOString().split('T')[0]
                     const to = end.toISOString().split('T')[0]
-                    const res = await fetch(`/api/v1/dashboard/daily-activity?from=${from}&to=${to}`)
+                    const res = await fetch(`/api/v1/dashboard/daily-activity?from=${from}&to=${to}&activityType=${searchParams.activityType.toUpperCase()}`)
                     if (res.ok) setDailyData(await res.json())
                 } else {
                     // Year Mode: Already fetched in yearlyData, no extra fetch needed
@@ -262,6 +262,47 @@ export function ActivityAnalysisAG() {
     const completionRate = totalPlanned > 0 ? Math.round((totalCompleted / totalPlanned) * 100) : 0
     const topPerformer = [...cardData].sort((a, b) => b.completed - a.completed)[0]
 
+    // Emit region activity data event for right panel map (fetch from API)
+    useEffect(() => {
+        async function loadRegionData() {
+            try {
+                const { year, month, week, activityType } = searchParams
+                let url = `/api/v1/dashboard/activity-by-region?year=${year}&activityType=${activityType.toUpperCase()}`
+                if (month !== 'all') {
+                    url += `&month=${month}`
+                }
+                if (week !== 'all') {
+                    url += `&week=${week}`
+                }
+
+                const res = await fetch(url)
+                if (res.ok) {
+                    const regionData = await res.json()
+
+                    const activityTypeLabel = activityType === 'all' ? '전체' :
+                        activityType === 'sales' ? '활동' : '지역활동'
+
+                    const mapInfo = {
+                        year: year,
+                        month: month,
+                        week: week,
+                        activityType: activityTypeLabel,
+                        totalPlanned,
+                        totalCompleted
+                    }
+
+                    window.dispatchEvent(new CustomEvent('tnt.sales.dashboard.activityRegion', {
+                        detail: { regionData, mapInfo }
+                    }))
+                }
+            } catch (e) {
+                console.error('Failed to load region activity data:', e)
+            }
+        }
+
+        loadRegionData()
+    }, [searchParams, totalPlanned, totalCompleted])
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, height: 'calc(100vh - 120px)' }}>
             <div className="page-title" style={{ marginBottom: 0, padding: '8px 0', minHeight: 'auto', height: 'auto' }}>
@@ -384,7 +425,7 @@ export function ActivityAnalysisAG() {
                     <div className="card" style={{ padding: 16, marginBottom: 8 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                             <h3 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>월별 활동 히트맵 ({searchParams.year}년)</h3>
-                            <div style={{ fontSize: 11, color: '#64748b' }}>* 히트맵은 항상 연간 데이터를 표시합니다</div>
+                            <div style={{ fontSize: 11, color: '#64748b' }}>* 수치는 '계획/완료' 건수입니다 | 히트맵은 항상 연간 데이터를 표시합니다</div>
                         </div>
                         <ActivityHeatmap data={yearlyData} />
                     </div>
@@ -461,18 +502,20 @@ function ActivityHeatmap({ data }: { data: EmployeeActivity[] }) {
                                 </td>
                                 {months.map(m => {
                                     const monthData = emp.months.find(d => d.month === m)
-                                    const val = monthData?.completed || 0
+                                    const completed = monthData?.completed || 0
+                                    const planned = monthData?.planned || 0
                                     return (
                                         <td key={m} style={{ padding: 4, textAlign: 'center' }}>
                                             <div style={{
-                                                background: getColor(val),
-                                                color: val > maxVal / 2 ? '#fff' : '#1e293b',
+                                                background: getColor(completed),
+                                                color: completed > maxVal / 2 ? '#fff' : '#1e293b',
                                                 borderRadius: 4,
                                                 padding: '4px 0',
-                                                fontSize: 11,
-                                                fontWeight: 600
+                                                fontSize: 10,
+                                                fontWeight: 600,
+                                                whiteSpace: 'nowrap'
                                             }}>
-                                                {val > 0 ? val : '-'}
+                                                {planned}/{completed}
                                             </div>
                                         </td>
                                     )
@@ -540,16 +583,18 @@ function EmployeeCard({ empName, deptName, planned, completed, chartData }: Empl
                                     background: d.value > 0 ? '#3b82f6' : 'transparent',
                                     height: `${h}%`,
                                     transition: 'height 0.3s ease',
-                                    display: 'flex',
-                                    alignItems: 'flex-start',
-                                    justifyContent: 'center',
-                                    paddingTop: 4
+                                }} />
+                                <div style={{
+                                    position: 'absolute', bottom: 4, left: 0, right: 0,
+                                    display: 'flex', justifyContent: 'center',
+                                    fontSize: 10,
+                                    fontWeight: 700,
+                                    lineHeight: 1,
+                                    color: h > 15 ? '#fff' : '#1e293b',
+                                    textShadow: h > 15 ? '0 1px 2px rgba(0,0,0,0.3)' : 'none',
+                                    zIndex: 1
                                 }}>
-                                    {d.value > 0 && (
-                                        <span style={{ fontSize: 10, color: '#fff', fontWeight: 700, lineHeight: 1, textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
-                                            {d.value}
-                                        </span>
-                                    )}
+                                    {d.subValue}/{d.value}
                                 </div>
                             </div>
 
