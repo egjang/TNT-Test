@@ -9,8 +9,14 @@ import './styles/index.css'
 import { initTheme } from './config/theme'
 import { msalConfig } from './config/msalConfig'
 
-// Initialize MSAL instance
-const msalInstance = new PublicClientApplication(msalConfig)
+// Initialize MSAL instance as singleton to prevent duplicate warnings
+const msalInstance = (() => {
+  const windowKey = '__MSAL_INSTANCE__'
+  if (!(window as any)[windowKey]) {
+    (window as any)[windowKey] = new PublicClientApplication(msalConfig)
+  }
+  return (window as any)[windowKey] as PublicClientApplication
+})()
 
 // Initialize theme early; default to light
 initTheme('light')

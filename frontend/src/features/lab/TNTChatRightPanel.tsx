@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import {
-  Database, Upload, FileText, ChevronRight, Folder, Plus, Trash2,
+  Database, Upload, FileText, ChevronRight, ChevronDown, Folder, Plus, Trash2,
   CheckCircle, RefreshCw, Cloud, LogIn, LogOut, User, X, Loader2, Settings
 } from 'lucide-react'
 import { useMsal } from '@azure/msal-react'
@@ -1146,506 +1146,260 @@ export function TNTChatRightPanel() {
           </div>
         )}
 
-        {/* Upload Tab */}
+        {/* Upload Tab - Simplified UI with Timeline */}
         {activeTab === 'upload' && (
           <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
             {!currentStore ? (
               <div style={{
-                padding: 32, textAlign: 'center',
-                background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
-                borderRadius: 16, border: '1px dashed #cbd5e1'
+                padding: 24, textAlign: 'center',
+                background: '#f8fafc', borderRadius: 12, border: '1px dashed #cbd5e1'
               }}>
-                <div style={{
-                  width: 56, height: 56, borderRadius: 16,
-                  background: 'linear-gradient(135deg, #94a3b8 0%, #64748b 100%)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  margin: '0 auto 12px', boxShadow: '0 4px 12px rgba(100,116,139,0.3)'
-                }}>
-                  <Database size={28} style={{ color: '#fff' }} />
-                </div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#475569', marginBottom: 4 }}>스토어 선택 필요</div>
-                <div style={{ fontSize: 12, color: '#94a3b8' }}>먼저 스토어를 선택하세요</div>
+                <Database size={32} style={{ color: '#94a3b8', marginBottom: 8 }} />
+                <div style={{ fontSize: 13, color: '#64748b' }}>먼저 스토어를 선택하세요</div>
               </div>
             ) : (
               <>
-                {/* 선택된 스토어 표시 - 스토어 탭과 동일한 스타일 */}
+                {/* 선택된 스토어 표시 */}
                 <div style={{
-                  marginBottom: 16,
-                  padding: 14,
-                  background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-                  borderRadius: 12,
-                  boxShadow: '0 6px 20px rgba(0,0,0,0.12)',
-                  color: '#fff',
-                  position: 'relative',
-                  overflow: 'hidden'
+                  padding: '10px 12px', marginBottom: 16,
+                  background: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)',
+                  borderRadius: 8, color: '#fff',
+                  display: 'flex', alignItems: 'center', gap: 10
                 }}>
-                  {/* Background Pattern */}
-                  <div style={{
-                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                    background: 'radial-gradient(circle at 100% 0%, rgba(59,130,246,0.2) 0%, transparent 50%)',
-                    pointerEvents: 'none'
-                  }} />
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, position: 'relative' }}>
-                    <div style={{
-                      width: 36, height: 36, borderRadius: 10,
-                      background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      boxShadow: '0 4px 12px rgba(59,130,246,0.4)'
-                    }}>
-                      <Database size={16} />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 10, opacity: 0.6, marginBottom: 1, letterSpacing: '0.05em' }}>ACTIVE STORE</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: '-0.01em' }}>{getStoreDisplayName()}</div>
-                    </div>
-                    <div style={{
-                      padding: '6px 10px',
-                      background: 'rgba(255,255,255,0.1)',
-                      borderRadius: 8,
-                      fontSize: 11, fontWeight: 500
-                    }}>
-                      <FileText size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />
-                      {storeDocuments.length}개 문서
-                    </div>
-                  </div>
+                  <Database size={16} style={{ opacity: 0.8 }} />
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{getStoreDisplayName()}</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 11, opacity: 0.7 }}>{storeDocuments.length}개 문서</span>
                 </div>
 
-                {/* Step 1: 로컬 → OneDrive - 로컬 파일 업로드 */}
-                <div style={{ marginBottom: 16 }}>
+                {/* Timeline Container */}
+                <div style={{ position: 'relative', paddingLeft: 24 }}>
+                  {/* Vertical Line */}
                   <div style={{
-                    fontSize: 12, fontWeight: 600, color: '#1e293b', marginBottom: 10,
-                    display: 'flex', alignItems: 'center', gap: 8
-                  }}>
-                    <span style={{
-                      width: 24, height: 24, borderRadius: 8,
-                      background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
-                      color: '#fff', fontSize: 11, fontWeight: 700,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      boxShadow: '0 2px 8px rgba(59,130,246,0.3)'
-                    }}>1</span>
-                    로컬 → OneDrive
-                  </div>
-                  {fileUploading ? (
-                    /* 업로드 중 로딩 UI */
+                    position: 'absolute', left: 7, top: 12, bottom: 12,
+                    width: 2, background: 'linear-gradient(180deg, #3b82f6 0%, #0ea5e9 50%, #10b981 100%)',
+                    borderRadius: 1
+                  }} />
+
+                  {/* Step 1: 로컬 파일 업로드 */}
+                  <div style={{ position: 'relative', marginBottom: 16 }}>
                     <div style={{
-                      padding: 24, background: 'linear-gradient(135deg, #f0f9ff 0%, #eff6ff 100%)',
-                      borderRadius: 12, border: '1px solid rgba(59,130,246,0.2)',
-                      textAlign: 'center', boxShadow: '0 4px 12px rgba(59,130,246,0.1)'
+                      position: 'absolute', left: -24, top: 8,
+                      width: 18, height: 18, borderRadius: '50%',
+                      background: '#3b82f6', border: '2px solid #dbeafe',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 9, fontWeight: 700, color: '#fff'
                     }}>
-                      <div style={{
-                        width: 48, height: 48, margin: '0 auto 14px',
-                        border: '4px solid rgba(59,130,246,0.2)', borderTop: '4px solid #3b82f6',
-                        borderRadius: '50%', animation: 'spin 1s linear infinite'
-                      }} />
-                      <div style={{ fontSize: 14, fontWeight: 600, color: '#1e40af', marginBottom: 6 }}>
-                        OneDrive에 업로드 중...
-                      </div>
-                      <div style={{ fontSize: 12, color: '#64748b' }}>
-                        파일을 OneDrive에 저장하고 있습니다
-                      </div>
-                      <div style={{ marginTop: 14, height: 8, background: 'rgba(59,130,246,0.15)', borderRadius: 4, overflow: 'hidden' }}>
-                        <div style={{
-                          width: '60%', height: '100%',
-                          background: 'linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%)',
-                          borderRadius: 4, animation: 'pulse 1.5s ease-in-out infinite'
-                        }} />
-                      </div>
+                      1
                     </div>
-                  ) : (
                     <div
                       onClick={accounts.length > 0 ? () => fileInputRef.current?.click() : handleMsLogin}
                       style={{
-                        padding: '12px 16px', background: 'linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%)',
-                        borderRadius: 10, border: '2px dashed #cbd5e1',
-                        cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', gap: 12,
-                        transition: 'all 0.2s ease',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
-                      }}
-                      onMouseOver={(e) => {
-                        e.currentTarget.style.borderColor = '#3b82f6'
-                        e.currentTarget.style.background = 'linear-gradient(135deg, #f0f9ff 0%, #eff6ff 100%)'
-                      }}
-                      onMouseOut={(e) => {
-                        e.currentTarget.style.borderColor = '#cbd5e1'
-                        e.currentTarget.style.background = 'linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%)'
+                        padding: '10px 12px', background: '#fff', borderRadius: 8,
+                        border: '1px solid #e2e8f0', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: 10
                       }}
                     >
-                      <div style={{
-                        width: 36, height: 36, borderRadius: 10,
-                        background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        boxShadow: '0 4px 12px rgba(59,130,246,0.3)',
-                        flexShrink: 0
-                      }}>
-                        <Upload size={18} style={{ color: '#fff' }} />
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
-                          {accounts.length > 0 ? '파일 선택' : 'MS 로그인 필요'}
-                        </div>
-                        <div style={{ fontSize: 10, color: '#94a3b8' }}>PDF, TXT, JSON 등</div>
-                      </div>
+                      <Upload size={16} style={{ color: '#3b82f6' }} />
+                      <span style={{ fontSize: 12, color: '#475569' }}>
+                        {fileUploading ? '업로드 중...' : accounts.length > 0 ? '로컬 파일 → OneDrive' : 'MS 로그인 필요'}
+                      </span>
                     </div>
-                  )}
+                  </div>
                   <input ref={fileInputRef} type="file" onChange={(e) => { if (e.target.files?.[0]) uploadFileToOneDrive(e.target.files[0]); e.target.value = '' }} style={{ display: 'none' }} />
-                </div>
 
-                {/* Step 2: OneDrive 파일 목록 */}
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{
-                    fontSize: 12, fontWeight: 600, color: '#1e293b', marginBottom: 10,
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{
-                        width: 24, height: 24, borderRadius: 8,
-                        background: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)',
-                        color: '#fff', fontSize: 11, fontWeight: 700,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        boxShadow: '0 2px 8px rgba(14,165,233,0.3)'
-                      }}>2</span>
-                      OneDrive 파일 목록
-                    </div>
-                    {showOneDrive && (
-                      <button
-                        onClick={() => {
-                          const lastFolder = oneDrivePath.length > 0 ? oneDrivePath[oneDrivePath.length - 1].id : undefined
-                          fetchOneDriveItems(lastFolder)
-                        }}
-                        style={{
-                          padding: 6, background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
-                          border: 'none', borderRadius: 6, cursor: 'pointer',
-                          boxShadow: '0 2px 6px rgba(14,165,233,0.15)'
-                        }}
-                        title="새로고침"
-                      >
-                        <RefreshCw size={14} style={{ color: '#0ea5e9' }} />
-                      </button>
-                    )}
+                  {/* Arrow 1→2 */}
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12, marginLeft: -12 }}>
+                    <ChevronDown size={16} style={{ color: '#94a3b8' }} />
                   </div>
 
-                  {!showOneDrive ? (
-                    <button
-                      onClick={accounts.length > 0 ? openOneDrive : handleMsLogin}
-                      style={{
-                        width: '100%', padding: 14,
-                        background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
-                        border: '1px solid rgba(14,165,233,0.2)',
-                        borderRadius: 12, cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                        boxShadow: '0 2px 8px rgba(14,165,233,0.1)',
-                        transition: 'all 0.2s ease'
-                      }}
-                    >
-                      <Cloud size={18} style={{ color: '#0ea5e9' }} />
-                      <span style={{ fontSize: 13, fontWeight: 600, color: '#0369a1' }}>
-                        {accounts.length > 0 ? 'OneDrive 열기' : 'MS 로그인 필요'}
-                      </span>
-                    </button>
-                  ) : (
+                  {/* Step 2: OneDrive 파일 선택 */}
+                  <div style={{ position: 'relative', marginBottom: 16 }}>
                     <div style={{
-                      background: '#fff', borderRadius: 12,
-                      border: '1px solid rgba(14,165,233,0.15)', overflow: 'hidden',
-                      boxShadow: '0 2px 12px rgba(0,0,0,0.06)'
+                      position: 'absolute', left: -24, top: 8,
+                      width: 18, height: 18, borderRadius: '50%',
+                      background: '#0ea5e9', border: '2px solid #e0f2fe',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 9, fontWeight: 700, color: '#fff'
                     }}>
-                      {/* Breadcrumb */}
+                      2
+                    </div>
+                    <div style={{
+                      background: '#fff', borderRadius: 8, border: '1px solid #e2e8f0', overflow: 'hidden'
+                    }}>
+                      {/* OneDrive 타이틀 */}
                       <div style={{
-                        padding: 10,
-                        background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
-                        borderBottom: '1px solid rgba(14,165,233,0.1)',
-                        display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap'
+                        padding: '10px 12px',
+                        background: 'linear-gradient(135deg, #0078d4 0%, #00bcf2 100%)',
+                        display: 'flex', alignItems: 'center', gap: 8
                       }}>
-                        <button onClick={() => navigateBack(-1)} style={{
-                          padding: '4px 10px',
-                          background: oneDrivePath.length === 0 ? 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)' : '#fff',
-                          color: oneDrivePath.length === 0 ? '#fff' : '#0369a1',
-                          border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 500,
-                          boxShadow: oneDrivePath.length === 0 ? '0 2px 6px rgba(14,165,233,0.3)' : '0 1px 3px rgba(0,0,0,0.08)'
-                        }}>Root</button>
-                        {oneDrivePath.map((p, idx) => (
-                          <React.Fragment key={p.id}>
-                            <ChevronRight size={12} style={{ color: '#94a3b8' }} />
-                            <button onClick={() => navigateBack(idx)} style={{
-                              padding: '4px 10px',
-                              background: idx === oneDrivePath.length - 1 ? 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)' : '#fff',
-                              color: idx === oneDrivePath.length - 1 ? '#fff' : '#0369a1',
-                              border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 500,
-                              boxShadow: idx === oneDrivePath.length - 1 ? '0 2px 6px rgba(14,165,233,0.3)' : '0 1px 3px rgba(0,0,0,0.08)'
-                            }}>{p.name}</button>
-                          </React.Fragment>
-                        ))}
-                        <button onClick={() => setShowOneDrive(false)} style={{
-                          marginLeft: 'auto', padding: 4, background: '#fff', border: 'none',
-                          borderRadius: 6, cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
-                        }}><X size={14} style={{ color: '#64748b' }} /></button>
+                        <Cloud size={16} style={{ color: '#fff' }} />
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>OneDrive</span>
+                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', marginLeft: 'auto' }}>파일 선택</span>
                       </div>
-
-                      {/* Progress */}
-                      {uploadProgress && (
-                        <div style={{
-                          padding: 10, background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
-                          borderBottom: '1px solid rgba(245,158,11,0.2)'
-                        }}>
-                          <div style={{ fontSize: 11, color: '#92400e', marginBottom: 4, fontWeight: 500 }}>업로드: {uploadProgress.file}</div>
-                          <div style={{ height: 6, background: 'rgba(245,158,11,0.2)', borderRadius: 3, overflow: 'hidden' }}>
-                            <div style={{
-                              width: `${(uploadProgress.current / uploadProgress.total) * 100}%`,
-                              height: '100%', background: 'linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%)',
-                              borderRadius: 3, transition: 'width 0.3s ease'
-                            }} />
-                          </div>
-                        </div>
-                      )}
-
-                      {/* File List */}
-                      <div style={{ maxHeight: 200, overflow: 'auto' }}>
-                        {oneDriveLoading ? (
-                          <div style={{ padding: 28, textAlign: 'center' }}>
-                            <Loader2 size={24} style={{ color: '#0ea5e9', animation: 'spin 1s linear infinite' }} />
-                          </div>
-                        ) : oneDriveItems.length === 0 ? (
-                          <div style={{ padding: 28, textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>폴더가 비어있습니다</div>
-                        ) : (
+                      <div style={{
+                        padding: '8px 12px', background: '#f8fafc',
+                        borderBottom: '1px solid #e2e8f0',
+                        display: 'flex', alignItems: 'center', gap: 6
+                      }}>
+                        {showOneDrive ? (
                           <>
-                            {oneDriveItems.filter(i => i.folder).map(item => (
-                              <div key={item.id} onClick={() => navigateToFolder(item)} style={{
-                                padding: '10px 12px', borderBottom: '1px solid #f1f5f9',
-                                display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
-                                transition: 'background 0.15s ease'
-                              }}
-                              onMouseOver={(e) => e.currentTarget.style.background = '#f8fafc'}
-                              onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
-                              >
-                                <div style={{
-                                  width: 32, height: 32, borderRadius: 8,
-                                  background: 'linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)',
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                }}>
-                                  <Folder size={16} style={{ color: '#0ea5e9' }} />
-                                </div>
-                                <div style={{ flex: 1, fontSize: 12, fontWeight: 500, color: '#1e293b' }}>{item.name}</div>
-                                <ChevronRight size={14} style={{ color: '#94a3b8' }} />
-                              </div>
+                            <button onClick={() => navigateBack(-1)} style={{
+                              padding: '2px 8px', background: oneDrivePath.length === 0 ? '#0ea5e9' : '#fff',
+                              color: oneDrivePath.length === 0 ? '#fff' : '#64748b',
+                              border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 11
+                            }}>Root</button>
+                            {oneDrivePath.map((p, idx) => (
+                              <React.Fragment key={p.id}>
+                                <ChevronRight size={10} style={{ color: '#94a3b8' }} />
+                                <button onClick={() => navigateBack(idx)} style={{
+                                  padding: '2px 8px', background: idx === oneDrivePath.length - 1 ? '#0ea5e9' : '#fff',
+                                  color: idx === oneDrivePath.length - 1 ? '#fff' : '#64748b',
+                                  border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 11
+                                }}>{p.name}</button>
+                              </React.Fragment>
                             ))}
-                            {oneDriveItems.filter(i => i.file).map(item => {
-                              const isSelected = selectedFiles.some(f => f.id === item.id)
-                              return (
-                                <div key={item.id} style={{
-                                  padding: '10px 12px', borderBottom: '1px solid #f1f5f9',
-                                  display: 'flex', alignItems: 'center', gap: 10,
-                                  background: isSelected ? 'linear-gradient(135deg, #f0f9ff 0%, #eff6ff 100%)' : 'transparent',
-                                  transition: 'background 0.15s ease'
-                                }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={() => toggleFileSelection(item)}
-                                    style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#3b82f6' }}
-                                  />
-                                  <div style={{
-                                    width: 32, height: 32, borderRadius: 8,
-                                    background: isSelected
-                                      ? 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)'
-                                      : 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    boxShadow: isSelected ? '0 2px 8px rgba(59,130,246,0.3)' : 'none',
-                                    transition: 'all 0.2s ease'
-                                  }}>
-                                    <FileText size={16} style={{ color: isSelected ? '#fff' : '#64748b' }} />
-                                  </div>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{
-                                      fontSize: 12, fontWeight: isSelected ? 600 : 500,
-                                      color: isSelected ? '#3b82f6' : '#1e293b',
-                                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
-                                    }}>{item.name}</div>
-                                    <div style={{ fontSize: 10, color: '#94a3b8' }}>{item.size ? `${(item.size / 1024).toFixed(1)} KB` : ''}</div>
-                                  </div>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      requestDeleteOneDriveFile(item)
-                                    }}
-                                    style={{
-                                      padding: 6,
-                                      background: '#fef2f2',
-                                      border: 'none',
-                                      borderRadius: 6,
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      opacity: 0.7,
-                                      transition: 'all 0.2s ease',
-                                      flexShrink: 0
-                                    }}
-                                    onMouseOver={(e) => {
-                                      e.currentTarget.style.opacity = '1'
-                                      e.currentTarget.style.background = '#fee2e2'
-                                    }}
-                                    onMouseOut={(e) => {
-                                      e.currentTarget.style.opacity = '0.7'
-                                      e.currentTarget.style.background = '#fef2f2'
-                                    }}
-                                    title="OneDrive에서 삭제"
-                                  >
-                                    <Trash2 size={14} style={{ color: '#ef4444' }} />
-                                  </button>
-                                </div>
-                              )
-                            })}
+                            <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                              <button onClick={() => {
+                                const lastFolder = oneDrivePath.length > 0 ? oneDrivePath[oneDrivePath.length - 1].id : undefined
+                                fetchOneDriveItems(lastFolder)
+                              }} style={{ padding: 4, background: 'transparent', border: 'none', cursor: 'pointer' }}>
+                                <RefreshCw size={12} style={{ color: '#64748b' }} />
+                              </button>
+                              <button onClick={() => setShowOneDrive(false)} style={{ padding: 4, background: 'transparent', border: 'none', cursor: 'pointer' }}>
+                                <X size={12} style={{ color: '#64748b' }} />
+                              </button>
+                            </div>
                           </>
+                        ) : (
+                          <button onClick={accounts.length > 0 ? openOneDrive : handleMsLogin} style={{
+                            background: 'transparent', border: 'none', cursor: 'pointer',
+                            fontSize: 12, color: '#0ea5e9', fontWeight: 500
+                          }}>
+                            {accounts.length > 0 ? 'OneDrive 열기' : 'MS 로그인'}
+                          </button>
                         )}
                       </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Step 3: 스토어 저장 목록 */}
-                <div>
-                  <div style={{
-                    fontSize: 12, fontWeight: 600, color: '#1e293b', marginBottom: 10,
-                    display: 'flex', alignItems: 'center', gap: 8
-                  }}>
-                    <span style={{
-                      width: 24, height: 24, borderRadius: 8,
-                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                      color: '#fff', fontSize: 11, fontWeight: 700,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      boxShadow: '0 2px 8px rgba(16,185,129,0.3)'
-                    }}>3</span>
-                    스토어 저장 목록 ({selectedFiles.length}개)
-                  </div>
-
-                  {/* 선택된 스토어 표시 */}
-                  <div style={{
-                    marginBottom: 12,
-                    padding: '14px 16px',
-                    background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
-                    borderRadius: 12,
-                    display: 'flex', alignItems: 'center', gap: 12,
-                    color: '#fff',
-                    boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
-                    position: 'relative', overflow: 'hidden'
-                  }}>
-                    <div style={{
-                      position: 'absolute', inset: 0, opacity: 0.1,
-                      background: 'radial-gradient(circle at 80% 20%, rgba(255,255,255,0.3) 0%, transparent 50%)'
-                    }} />
-                    <div style={{
-                      width: 36, height: 36, borderRadius: 10,
-                      background: 'rgba(255,255,255,0.2)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center'
-                    }}>
-                      <Database size={20} />
-                    </div>
-                    <span style={{ fontSize: 14, fontWeight: 700, position: 'relative' }}>{getStoreDisplayName()}</span>
-                  </div>
-
-                  {selectedFiles.length === 0 ? (
-                    <div style={{
-                      padding: 20, background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)',
-                      borderRadius: 12, border: '2px dashed rgba(16,185,129,0.3)',
-                      textAlign: 'center', color: '#6b7280', fontSize: 12
-                    }}>
-                      <div style={{
-                        width: 40, height: 40, borderRadius: 10,
-                        background: 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        margin: '0 auto 10px'
-                      }}>
-                        <FileText size={20} style={{ color: '#10b981' }} />
-                      </div>
-                      OneDrive 파일 목록에서 파일을 선택하세요
-                    </div>
-                  ) : (
-                    <div style={{
-                      background: '#fff', borderRadius: 12,
-                      border: '1px solid rgba(16,185,129,0.2)', overflow: 'hidden',
-                      boxShadow: '0 2px 12px rgba(0,0,0,0.06)'
-                    }}>
-                      {/* Progress bar when saving */}
-                      {savingToStore && uploadProgress && (
-                        <div style={{
-                          padding: 12, background: 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)',
-                          borderBottom: '1px solid rgba(16,185,129,0.2)'
-                        }}>
-                          <div style={{ fontSize: 11, color: '#065f46', marginBottom: 6, fontWeight: 500 }}>
-                            저장 중: {uploadProgress.file} ({uploadProgress.current + 1}/{uploadProgress.total})
-                          </div>
-                          <div style={{ height: 6, background: 'rgba(16,185,129,0.2)', borderRadius: 3, overflow: 'hidden' }}>
-                            <div style={{
-                              width: `${((uploadProgress.current + 1) / uploadProgress.total) * 100}%`,
-                              height: '100%', background: 'linear-gradient(90deg, #10b981 0%, #34d399 100%)',
-                              borderRadius: 3, transition: 'width 0.3s ease'
-                            }} />
-                          </div>
+                      {uploadProgress && (
+                        <div style={{ padding: '6px 12px', background: '#fef3c7', fontSize: 11, color: '#92400e' }}>
+                          {uploadProgress.file} ({uploadProgress.current + 1}/{uploadProgress.total})
                         </div>
                       )}
-                      {/* Selected files list */}
-                      <div style={{ maxHeight: 140, overflow: 'auto' }}>
-                        {selectedFiles.map((item, idx) => (
-                          <div key={item.id} style={{
-                            padding: '10px 12px', borderBottom: '1px solid #f1f5f9',
-                            display: 'flex', alignItems: 'center', gap: 10
-                          }}>
-                            <div style={{
-                              width: 28, height: 28, borderRadius: 8,
-                              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              color: '#fff', fontSize: 11, fontWeight: 700,
-                              boxShadow: '0 2px 6px rgba(16,185,129,0.3)'
-                            }}>
-                              {idx + 1}
+                      {showOneDrive && (
+                        <div style={{ maxHeight: 180, overflow: 'auto' }}>
+                          {oneDriveLoading ? (
+                            <div style={{ padding: 16, textAlign: 'center' }}>
+                              <Loader2 size={18} style={{ color: '#94a3b8', animation: 'spin 1s linear infinite' }} />
                             </div>
-                            <div style={{ flex: 1, fontSize: 11, color: '#1e293b', fontWeight: 500 }}>{item.name}</div>
-                            <button
-                              onClick={() => removeFromSelection(item)}
-                              disabled={savingToStore}
-                              style={{
-                                padding: 4, background: savingToStore ? '#f1f5f9' : '#fee2e2',
-                                border: 'none', borderRadius: 6,
-                                cursor: savingToStore ? 'not-allowed' : 'pointer',
-                                opacity: savingToStore ? 0.5 : 1,
-                                transition: 'all 0.2s ease'
-                              }}
-                            >
-                              <X size={14} style={{ color: '#ef4444' }} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                      {/* Save button */}
-                      <div style={{ padding: 12, background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)', borderTop: '1px solid rgba(16,185,129,0.15)' }}>
-                        <button
-                          onClick={saveSelectedFilesToStore}
-                          disabled={savingToStore || selectedFiles.length === 0}
-                          style={{
-                            width: '100%', padding: '12px 18px',
-                            background: savingToStore ? '#9ca3af' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                            color: '#fff', border: 'none', borderRadius: 10,
-                            fontSize: 13, fontWeight: 700, cursor: savingToStore ? 'not-allowed' : 'pointer',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                            boxShadow: savingToStore ? 'none' : '0 4px 12px rgba(16,185,129,0.35)',
-                            transition: 'all 0.2s ease'
-                          }}
-                        >
-                          {savingToStore ? (
-                            <>
-                              <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                              저장 중...
-                            </>
+                          ) : oneDriveItems.length === 0 ? (
+                            <div style={{ padding: 16, textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>빈 폴더</div>
                           ) : (
                             <>
-                              <CheckCircle size={16} />
-                              스토어에 저장 ({selectedFiles.length}개)
+                              {oneDriveItems.filter(i => i.folder).map(item => (
+                                <div key={item.id} onClick={() => navigateToFolder(item)} style={{
+                                  padding: '8px 12px', borderBottom: '1px solid #f1f5f9',
+                                  display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer'
+                                }}>
+                                  <Folder size={14} style={{ color: '#0ea5e9' }} />
+                                  <span style={{ flex: 1, fontSize: 12, color: '#374151' }}>{item.name}</span>
+                                  <ChevronRight size={12} style={{ color: '#94a3b8' }} />
+                                </div>
+                              ))}
+                              {oneDriveItems.filter(i => i.file).map(item => {
+                                const isSelected = selectedFiles.some(f => f.id === item.id)
+                                return (
+                                  <div key={item.id} style={{
+                                    padding: '8px 12px', borderBottom: '1px solid #f1f5f9',
+                                    display: 'flex', alignItems: 'center', gap: 8,
+                                    background: isSelected ? '#eff6ff' : 'transparent'
+                                  }}>
+                                    <input type="checkbox" checked={isSelected} onChange={() => toggleFileSelection(item)}
+                                      style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#3b82f6' }} />
+                                    <FileText size={14} style={{ color: isSelected ? '#3b82f6' : '#94a3b8' }} />
+                                    <span style={{ flex: 1, fontSize: 12, color: isSelected ? '#1d4ed8' : '#374151',
+                                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
+                                    <button onClick={(e) => { e.stopPropagation(); requestDeleteOneDriveFile(item) }}
+                                      style={{ padding: 2, background: 'transparent', border: 'none', cursor: 'pointer', opacity: 0.5 }}>
+                                      <Trash2 size={12} style={{ color: '#ef4444' }} />
+                                    </button>
+                                  </div>
+                                )
+                              })}
                             </>
                           )}
-                        </button>
-                      </div>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </div>
+
+                  {/* Arrow 2→3 */}
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12, marginLeft: -12 }}>
+                    <ChevronDown size={16} style={{ color: '#94a3b8' }} />
+                  </div>
+
+                  {/* Step 3: 스토어 저장 */}
+                  <div style={{ position: 'relative' }}>
+                    <div style={{
+                      position: 'absolute', left: -24, top: 8,
+                      width: 18, height: 18, borderRadius: '50%',
+                      background: selectedFiles.length > 0 ? '#10b981' : '#d1d5db',
+                      border: `2px solid ${selectedFiles.length > 0 ? '#dcfce7' : '#f3f4f6'}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 9, fontWeight: 700, color: '#fff'
+                    }}>
+                      3
+                    </div>
+                    {selectedFiles.length === 0 ? (
+                      <div style={{
+                        padding: '12px', background: '#f9fafb', borderRadius: 8,
+                        border: '1px dashed #d1d5db', textAlign: 'center',
+                        fontSize: 12, color: '#9ca3af'
+                      }}>
+                        OneDrive에서 파일을 선택하세요
+                      </div>
+                    ) : (
+                      <div style={{
+                        background: '#fff', borderRadius: 8, border: '1px solid #10b981', overflow: 'hidden'
+                      }}>
+                        <div style={{ padding: '8px 12px', background: '#ecfdf5', borderBottom: '1px solid #d1fae5',
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: '#065f46' }}>
+                            선택됨 ({selectedFiles.length})
+                          </span>
+                        </div>
+                        <div style={{ maxHeight: 80, overflow: 'auto' }}>
+                          {selectedFiles.map((item, idx) => (
+                            <div key={item.id} style={{
+                              padding: '6px 12px', borderBottom: '1px solid #f1f5f9',
+                              display: 'flex', alignItems: 'center', gap: 8, fontSize: 11
+                            }}>
+                              <span style={{ color: '#10b981', fontWeight: 600 }}>{idx + 1}</span>
+                              <span style={{ flex: 1, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
+                              <button onClick={() => removeFromSelection(item)} disabled={savingToStore}
+                                style={{ padding: 2, background: 'transparent', border: 'none', cursor: 'pointer' }}>
+                                <X size={12} style={{ color: '#ef4444' }} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ padding: 10 }}>
+                          <button onClick={saveSelectedFilesToStore} disabled={savingToStore}
+                            style={{
+                              width: '100%', padding: '10px',
+                              background: savingToStore ? '#9ca3af' : '#10b981',
+                              color: '#fff', border: 'none', borderRadius: 8,
+                              fontSize: 13, fontWeight: 600, cursor: savingToStore ? 'not-allowed' : 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
+                            }}>
+                            {savingToStore ? (
+                              <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> 저장 중...</>
+                            ) : (
+                              <><CheckCircle size={14} /> 스토어에 저장</>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </>
             )}

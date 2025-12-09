@@ -195,43 +195,23 @@ export function MobileOrderForm({ onBack }: { onBack?: () => void }) {
     }
   }
 
-  async function addToCart(item: any) {
+  function addToCart(item: any) {
     if (cart.some((c) => String(c.itemName) === String(item.itemName))) {
       setNotice({ open: true, text: '이미 주문에 포함되어 있습니다.', type: 'error' })
       return
     }
 
-    // Use selected item's itemSeq and companyType directly
+    // 품목 검색/거래내역 API에서 이미 itemStdUnit을 가져옴 (spec API 호출 불필요)
     const itemSeq = item.itemSeq ?? null
-    let itemStdUnit: string | null = item.itemStdUnit ?? null
-    let itemSpec = ''
-    const companyType: string | null = item.companyType ?? null
-
-    // itemName으로 spec API 호출하여 itemSpec, itemStdUnit 조회
-    if (item.itemName) {
-      try {
-        const r = await fetch(`/api/v1/items/spec?itemName=${encodeURIComponent(item.itemName)}`)
-        if (r.ok) {
-          const data = await r.json().catch(() => null)
-          // spec API에서 itemSpec, itemStdUnit만 가져옴 (itemSeq, companyType은 선택된 품목 값 사용)
-          if (!itemStdUnit && (data?.itemStdUnit || data?.item_std_unit)) {
-            itemStdUnit = data?.itemStdUnit ?? data?.item_std_unit
-          }
-          if (data?.itemSpec || data?.item_spec) {
-            itemSpec = data?.itemSpec ?? data?.item_spec ?? ''
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }
+    const itemStdUnit = item.itemStdUnit ?? item.item_std_unit ?? null
+    const companyType = item.companyType ?? item.company_type ?? null
 
     setCart([
       ...cart,
       {
         itemSeq,
-        itemName: item.itemName,
-        itemSpec: itemSpec || '',
+        itemName: item.itemName ?? item.item_name ?? '',
+        itemSpec: '',
         qty: '',
         companyType,
         itemStdUnit,

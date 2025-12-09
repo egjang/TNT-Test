@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react'
+import { UnblockRequestModal } from './UnblockRequestModal'
+
 
 type CustomerCreditInfo = {
   customerSeq: number
@@ -65,6 +67,7 @@ export function CustomerCreditPanel({ customerSeq, onClose }: CustomerCreditPane
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'overview' | 'opinions' | 'requests'>('overview')
+  const [showUnblockModal, setShowUnblockModal] = useState(false)
 
   const fetchCustomerCredit = async () => {
     setLoading(true)
@@ -619,7 +622,7 @@ export function CustomerCreditPanel({ customerSeq, onClose }: CustomerCreditPane
               {customer.isBlocked && (
                 <button
                   className="button primary"
-                  onClick={() => alert('차단 해제 요청 기능 구현 예정')}
+                  onClick={() => setShowUnblockModal(true)}
                   style={{ marginTop: 8 }}
                 >
                   + 차단 해제 요청
@@ -629,6 +632,18 @@ export function CustomerCreditPanel({ customerSeq, onClose }: CustomerCreditPane
           )}
         </div>
       </div>
+      {showUnblockModal && customer && (
+        <UnblockRequestModal
+          customerSeq={customerSeq}
+          customerName={customer.customerName}
+          onClose={() => setShowUnblockModal(false)}
+          onSuccess={() => {
+            setShowUnblockModal(false)
+            fetchCustomerCredit()
+            setActiveTab('requests')
+          }}
+        />
+      )}
     </>
   )
 }

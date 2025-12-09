@@ -1,529 +1,386 @@
-import React, { useState, useEffect } from 'react'
-import {
-  ArrowLeft,
-  LayoutGrid,
-  List,
-  Search,
-  Filter,
-  MoreHorizontal,
-  X,
-  CheckCircle2,
-  AlertCircle,
-  Clock,
-  TrendingUp,
-  DollarSign,
-  User,
-  ChevronRight,
-  BarChart2 as BarChartIcon
-} from 'lucide-react'
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell
-} from 'recharts'
+import React, { useEffect, useMemo, useState } from 'react'
+import { ArrowLeft, Calendar, ClipboardList, Clock, FileText, UserCheck } from 'lucide-react'
+
+type MeetingStatus = 'PLANNED' | 'DATA_GENERATED' | 'ON_GOING' | 'FINISHED' | 'POSTPONED'
 
 type MeetingInfo = {
   id: number
-  meetingCode: string
-  meetingName: string
-  meetingDate: string
-  status: 'PLANNED' | 'IN_PROGRESS' | 'CLOSED'
+  meeting_code: string
+  meeting_name: string
+  meeting_date: string
+  meeting_status: MeetingStatus
   remark?: string
 }
 
 type MeetingCustomer = {
   id: number
-  customerSeq: number
-  customerName: string
-  riskLevel: 'high' | 'medium' | 'low'
-  totalAr: number
-  overdue: number
-  decisionCode?: 'KEEP_BLOCK' | 'REVIEW_UNBLOCK' | 'WATCH' | 'APPROVED' | 'REJECTED'
-  decisionComment?: string
-  reviewFlag: boolean
-  [key: string]: any
+  customer_seq: number
+  customer_name: string
+  total_ar?: number
+  aging_31_60?: number
+  aging_61_90?: number
+  aging_91_120?: number
+  decision_code?: string
+  decision_comment?: string
 }
 
-const RISK_COLORS = {
-  high: '#ef4444',
-  medium: '#f59e0b',
-  low: '#10b981'
+type SalesOpinion = {
+  id: number
+  meeting_id: number
+  customer_seq: number
+  customer_name: string
+  assignee_id: string
+  emp_name: string
+  opinion_type: string
+  opinion_text: string
+  promise_date?: string
+  promise_amount?: number
+  risk_level: string
+  company_type: string
+  created_at: string
+  created_by: string
+}
+
+type Activity = {
+  id: number
+  subject: string
+  description: string
+  activity_type: string
+  activity_status: string
+  channel: string
+  planned_start_at?: string
+  actual_start_at?: string
+  sf_owner_id?: string
+  owner_name?: string
+  created_at?: string
+}
+
+type UnblockRequest = {
+  id: number
+  customer_seq: number
+  customer_name: string
+  company_type?: string
+  request_status: string
+  request_date?: string
+  target_unblock_date?: string
+  reason_text?: string
+  collection_plan?: string
+  latest_decision?: string
+  latest_decided_at?: string
+}
+
+type MeetingRemark = {
+  id: number
+  remark_type?: string
+  author_id?: string
+  author_name?: string
+  remark_text?: string
+  created_at?: string
+}
+
+const STATUS_META: Record<MeetingStatus, { label: string; bg: string; color: string }> = {
+  PLANNED: { label: '회의 예정', bg: '#e0f2fe', color: '#0369a1' },
+  DATA_GENERATED: { label: '자료 생성', bg: '#ede9fe', color: '#6d28d9' },
+  ON_GOING: { label: '진행중', bg: '#fef3c7', color: '#b45309' },
+  FINISHED: { label: '완료', bg: '#dcfce7', color: '#15803d' },
+  POSTPONED: { label: '연기', bg: '#fee2e2', color: '#b91c1c' }
+}
+
+const fmtDate = (val?: string) => {
+  if (!val) return '-'
+  const d = new Date(val)
+  return Number.isNaN(d.getTime()) ? val : d.toISOString().slice(0, 10)
+}
+
+const formatStatus = (status?: string) => {
+  if (!status) return '-'
+  const s = status.toUpperCase()
+  const map: Record<string, string> = {
+    REQUESTED: '요청',
+    SUBMITTED: '제출',
+    HOLD: '보류',
+    APPROVED: '승인',
+    REJECTED: '반려',
+    CANCELLED: '취소',
+    CANCELED: '취소',
+    PENDING: '대기'
+  }
+  return map[s] || status
+}
+
+const formatDecision = (decision?: string) => {
+  if (!decision) return '-'
+  const d = decision.toUpperCase()
+  const map: Record<string, string> = {
+    APPROVE: '승인',
+    APPROVED: '승인',
+    REJECT: '반려',
+    REJECTED: '반려',
+    HOLD: '보류',
+    PENDING: '대기'
+  }
+  return map[d] || decision
 }
 
 export function CreditMeetingDetail() {
   const getMeetingIdFromUrl = () => {
-    const key = window.location.hash.replace('#', '') || 'credit:meeting:1'
+    const key = window.location.hash.replace('#', '')
     const parts = key.split(':')
-    return parts[2] || '1'
+    return parts[2] || '0'
   }
 
-  const id = getMeetingIdFromUrl()
+  const meetingId = getMeetingIdFromUrl()
   const [meeting, setMeeting] = useState<MeetingInfo | null>(null)
+  const [activities, setActivities] = useState<Activity[]>([])
+  const [unblocks, setUnblocks] = useState<UnblockRequest[]>([])
   const [customers, setCustomers] = useState<MeetingCustomer[]>([])
+  const [remarks, setRemarks] = useState<MeetingRemark[]>([])
+  const [salesOpinions, setSalesOpinions] = useState<SalesOpinion[]>([])
   const [loading, setLoading] = useState(false)
-  const [viewMode, setViewMode] = useState<'grid' | 'kanban'>('kanban')
-  const [selectedCustomer, setSelectedCustomer] = useState<MeetingCustomer | null>(null)
 
-  // Slide-over panel state
-  const [isPanelOpen, setIsPanelOpen] = useState(false)
-  const [opinionText, setOpinionText] = useState('')
-  const [decisionCode, setDecisionCode] = useState<string>('WATCH')
-
-  const fetchMeetingDetail = async () => {
+  const fetchDetail = async () => {
+    if (!meetingId) return
     setLoading(true)
     try {
-      const res = await fetch(`/api/v1/credit/meetings/${id}`)
+      // 기존 회의 상세 정보 조회
+      const res = await fetch(`/api/v1/credit/meetings/${meetingId}`)
       const data = await res.json()
 
       if (data.meeting) {
-        setMeeting({
-          id: data.meeting.id,
-          meetingCode: data.meeting.meeting_code,
-          meetingName: data.meeting.meeting_name,
-          meetingDate: data.meeting.meeting_date,
-          status: data.meeting.meeting_status,
-          remark: data.meeting.remark
-        })
+        setMeeting(data.meeting)
       }
+      setCustomers(data.customers || [])
+      setActivities((data.activities || []).map((a: any) => ({
+        ...a,
+        owner_name: a.owner_name ?? a.ownerName,
+        sf_owner_id: a.sf_owner_id ?? a.sfOwnerId,
+      })))
+      setUnblocks(data.unblockRequests || [])
+      setRemarks(data.remarks || [])
 
-      const customers = (data.customers || []).map((c: any) => ({
-        id: c.id,
-        customerSeq: c.customer_seq,
-        customerName: c.customer_name,
-        riskLevel: 'medium', // Mock logic
-        totalAr: c.total_ar,
-        overdue: c.overdue || 0,
-        decisionCode: c.decision_code,
-        decisionComment: c.decision_comment,
-        reviewFlag: c.review_flag
-      }))
-      setCustomers(customers)
+      // 거래처별 회의 결과 (credit_sales_opinion) 조회
+      const opinionsRes = await fetch(`/api/v1/credit/meetings/${meetingId}/opinions`)
+      const opinionsData = await opinionsRes.json()
+      setSalesOpinions(opinionsData.opinions || [])
     } catch (err) {
-      console.error(err)
+      console.error('회의 상세 조회 실패', err)
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchMeetingDetail()
-  }, [id])
+    fetchDetail()
+  }, [meetingId])
 
-  const handleCustomerClick = (customer: MeetingCustomer) => {
-    setSelectedCustomer(customer)
-    setOpinionText(customer.decisionComment || '')
-    setDecisionCode(customer.decisionCode || 'WATCH')
-    setIsPanelOpen(true)
-  }
-
-  const handleSaveOpinion = async () => {
-    if (!selectedCustomer) return
-    // Mock save logic
-    alert('의견이 저장되었습니다.')
-    setIsPanelOpen(false)
-    fetchMeetingDetail()
-  }
-
-  const formatCurrency = (val: number) => `₩${val.toLocaleString()}`
-
-  // Kanban Columns
-  const kanbanColumns = [
-    { id: 'WATCH', title: '관찰 (Watch)', color: '#fef3c7', textColor: '#92400e', borderColor: '#f59e0b' },
-    { id: 'REVIEW_UNBLOCK', title: '해제 검토', color: '#dbeafe', textColor: '#1e40af', borderColor: '#3b82f6' },
-    { id: 'KEEP_BLOCK', title: '차단 유지', color: '#fee2e2', textColor: '#991b1b', borderColor: '#ef4444' },
-    { id: 'APPROVED', title: '승인', color: '#dcfce7', textColor: '#166534', borderColor: '#22c55e' },
-  ]
-
-  const getUnassignedCustomers = () => customers.filter(c => !c.decisionCode)
+  const summary = useMemo(() => ({
+    activityCount: activities.length,
+    unblockCount: unblocks.length,
+    customerCount: salesOpinions.length
+  }), [activities.length, unblocks.length, salesOpinions.length])
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#f8f9fa', overflow: 'hidden', position: 'relative' }}>
-      {/* Header */}
-      <div style={{ padding: '20px 24px', background: '#fff', borderBottom: '1px solid #e5e7eb', zIndex: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#f8f9fa' }}>
+      <div style={{ padding: '20px 24px', background: '#fff', borderBottom: '1px solid #e5e7eb' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 12 }}>
           <button
-            onClick={() => window.history.back()}
+            onClick={() => {
+              window.location.hash = 'credit:meetings'
+              window.dispatchEvent(new CustomEvent('tnt.sales.navigate', { detail: { key: 'credit:meetings' } }))
+            }}
             style={{ padding: 8, borderRadius: '50%', border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            onMouseEnter={(e) => (e.currentTarget.style.background = '#f3f4f6')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           >
             <ArrowLeft size={20} color="#4b5563" />
           </button>
-          <div>
-            <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827', margin: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
-              {meeting?.meetingName}
-              <span style={{
-                padding: '2px 10px',
-                borderRadius: 999,
-                fontSize: 12,
-                fontWeight: 600,
-                background: meeting?.status === 'CLOSED' ? '#dcfce7' : '#dbeafe',
-                color: meeting?.status === 'CLOSED' ? '#15803d' : '#1d4ed8'
-              }}>
-                {meeting?.status}
-              </span>
-            </h1>
-            <p style={{ margin: '4px 0 0 0', color: '#6b7280', fontSize: 14 }}>{meeting?.meetingCode} · {meeting?.meetingDate}</p>
-          </div>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-            <div style={{ display: 'flex', background: '#f3f4f6', padding: 4, borderRadius: 8 }}>
-              <button
-                onClick={() => setViewMode('kanban')}
-                style={{
-                  padding: 6,
-                  borderRadius: 6,
-                  border: 'none',
-                  background: viewMode === 'kanban' ? '#fff' : 'transparent',
-                  boxShadow: viewMode === 'kanban' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-                  color: viewMode === 'kanban' ? '#2563eb' : '#6b7280',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center'
-                }}
-              >
-                <LayoutGrid size={16} />
-              </button>
-              <button
-                onClick={() => setViewMode('grid')}
-                style={{
-                  padding: 6,
-                  borderRadius: 6,
-                  border: 'none',
-                  background: viewMode === 'grid' ? '#fff' : 'transparent',
-                  boxShadow: viewMode === 'grid' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-                  color: viewMode === 'grid' ? '#2563eb' : '#6b7280',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center'
-                }}
-              >
-                <List size={16} />
-              </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#111827' }}>{meeting?.meeting_name || '채권회의'}</h1>
+              {meeting?.meeting_status && (
+                <span style={{
+                  padding: '4px 10px',
+                  borderRadius: 999,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  background: STATUS_META[meeting.meeting_status].bg,
+                  color: STATUS_META[meeting.meeting_status].color
+                }}>
+                  {STATUS_META[meeting.meeting_status].label}
+                </span>
+              )}
             </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, color: '#6b7280', fontSize: 13 }}>
+              <Calendar size={14} /> {meeting?.meeting_date ? fmtDate(meeting.meeting_date) : '-'}
+            </div>
+            {meeting?.remark && (
+              <div style={{ marginTop: 6, color: '#4b5563', fontSize: 13, lineHeight: 1.5 }}>{meeting.remark}</div>
+            )}
           </div>
         </div>
 
-        {/* Dashboard Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
-          <div style={{ background: 'linear-gradient(to bottom right, #eff6ff, #fff)', padding: 16, borderRadius: 12, border: '1px solid #dbeafe' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <TrendingUp size={12} /> 총 채권액
-            </div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: '#111827' }}>
-              {formatCurrency(customers.reduce((sum, c) => sum + c.totalAr, 0))}
-            </div>
-          </div>
-          <div style={{ background: 'linear-gradient(to bottom right, #fef2f2, #fff)', padding: 16, borderRadius: 12, border: '1px solid #fee2e2' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#dc2626', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <AlertCircle size={12} /> 총 연체액
-            </div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: '#111827' }}>
-              {formatCurrency(customers.reduce((sum, c) => sum + c.overdue, 0))}
-            </div>
-          </div>
-          <div style={{ background: 'linear-gradient(to bottom right, #fffbeb, #fff)', padding: 16, borderRadius: 12, border: '1px solid #fef3c7' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#d97706', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <User size={12} /> 심사 대상
-            </div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: '#111827' }}>
-              {customers.filter(c => c.reviewFlag).length} <span style={{ fontSize: 14, fontWeight: 400, color: '#6b7280' }}>업체</span>
-            </div>
-          </div>
-          <div style={{ background: 'linear-gradient(to bottom right, #ecfdf5, #fff)', padding: 16, borderRadius: 12, border: '1px solid #d1fae5' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#059669', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <CheckCircle2 size={12} /> 완료율
-            </div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: '#111827' }}>
-              {Math.round((customers.filter(c => c.decisionCode).length / (customers.length || 1)) * 100)}%
-            </div>
-          </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+          <SummaryCard label="거래처별 회의 결과" value={`${summary.customerCount}건`} icon={<UserCheck size={16} color="#2563eb" />} />
+          <SummaryCard label="회의 활동" value={`${summary.activityCount}건`} icon={<ClipboardList size={16} color="#16a34a" />} />
+          <SummaryCard label="매출통제 해제 요청" value={`${summary.unblockCount}건`} icon={<FileText size={16} color="#b45309" />} />
         </div>
       </div>
 
-      {/* Main Content */}
-      <div style={{ flex: 1, overflowX: 'auto', padding: 24 }}>
-        {viewMode === 'kanban' ? (
-          <div style={{ display: 'flex', gap: 24, height: '100%', minWidth: 'max-content' }}>
-            {/* Unassigned Column */}
-            <div style={{ width: 320, display: 'flex', flexDirection: 'column' }}>
-              <div style={{ marginBottom: 12, fontWeight: 600, color: '#6b7280', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                미결정 <span style={{ background: '#e5e7eb', padding: '2px 8px', borderRadius: 999, fontSize: 12 }}>{getUnassignedCustomers().length}</span>
-              </div>
-              <div style={{ flex: 1, background: '#f3f4f6', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
-                {getUnassignedCustomers().map(customer => (
-                  <div
-                    key={customer.id}
-                    onClick={() => handleCustomerClick(customer)}
-                    className="card"
-                    style={{
-                      background: '#fff',
-                      padding: 16,
-                      borderRadius: 8,
-                      border: '1px solid #e5e7eb',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-2px)'
-                      e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'none'
-                      e.currentTarget.style.boxShadow = 'none'
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                      <span style={{
-                        width: 8, height: 8, borderRadius: '50%', marginTop: 6,
-                        background: customer.riskLevel === 'high' ? '#ef4444' : customer.riskLevel === 'medium' ? '#f59e0b' : '#10b981'
-                      }} />
-                      <span style={{ fontSize: 12, fontFamily: 'monospace', color: '#9ca3af' }}>#{customer.customerSeq}</span>
-                    </div>
-                    <h4 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '0 0 4px 0' }}>{customer.customerName}</h4>
-                    <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 12 }}>
-                      채권: {formatCurrency(customer.totalAr)}
-                    </div>
-                    {customer.reviewFlag && (
-                      <div style={{ fontSize: 12, background: '#f3e8ff', color: '#7e22ce', padding: '2px 8px', borderRadius: 4, display: 'inline-block' }}>
-                        심사필요
-                      </div>
-                    )}
+      <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
+        {/* Meeting Remarks */}
+        <Section title="회의 결과">
+          {remarks.length === 0 ? (
+            <EmptyRow text="등록된 회의 내용이 없습니다." />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {remarks.map((r) => (
+                <div key={r.id} style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>{r.author_name || r.author_id || '작성자 없음'}</div>
+                    <div style={{ fontSize: 12, color: '#9ca3af' }}>{fmtDate(r.created_at)}</div>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Decision Columns */}
-            {kanbanColumns.map(col => {
-              const colCustomers = customers.filter(c => c.decisionCode === col.id)
-              return (
-                <div key={col.id} style={{ width: 320, display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ marginBottom: 12, fontWeight: 600, color: '#374151', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    {col.title}
-                    <span style={{ background: col.color, color: col.textColor, padding: '2px 8px', borderRadius: 999, fontSize: 12 }}>
-                      {colCustomers.length}
-                    </span>
-                  </div>
-                  <div style={{ flex: 1, background: '#f3f4f6', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
-                    {colCustomers.map(customer => (
-                      <div
-                        key={customer.id}
-                        onClick={() => handleCustomerClick(customer)}
-                        className="card"
-                        style={{
-                          background: '#fff',
-                          padding: 16,
-                          borderRadius: 8,
-                          border: '1px solid #e5e7eb',
-                          borderLeft: `4px solid ${col.borderColor}`,
-                          cursor: 'pointer',
-                          transition: 'all 0.2s'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.transform = 'translateY(-2px)'
-                          e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.transform = 'none'
-                          e.currentTarget.style.boxShadow = 'none'
-                        }}
-                      >
-                        <h4 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '0 0 4px 0' }}>{customer.customerName}</h4>
-                        <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 8px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                          "{customer.decisionComment}"
-                        </p>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: '#9ca3af' }}>
-                          <span>{formatCurrency(customer.totalAr)}</span>
-                          <MoreHorizontal size={16} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>{r.remark_type || ''}</div>
+                  <div style={{ fontSize: 13, color: '#374151', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{r.remark_text || '-'}</div>
                 </div>
-              )
-            })}
-          </div>
-        ) : (
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', overflow: 'hidden', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-              <thead style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+              ))}
+            </div>
+          )}
+        </Section>
+
+        {/* Activities */}
+        <Section title="채권회의 활동">
+          {activities.length === 0 ? (
+            <EmptyRow text="등록된 활동이 없습니다." />
+          ) : (
+            <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
                 <tr>
-                  <th style={{ padding: '12px 24px', textAlign: 'left', fontWeight: 600, color: '#6b7280' }}>거래처</th>
-                  <th style={{ padding: '12px 24px', textAlign: 'right', fontWeight: 600, color: '#6b7280' }}>총 채권</th>
-                  <th style={{ padding: '12px 24px', textAlign: 'right', fontWeight: 600, color: '#6b7280' }}>연체액</th>
-                  <th style={{ padding: '12px 24px', textAlign: 'center', fontWeight: 600, color: '#6b7280' }}>위험도</th>
-                  <th style={{ padding: '12px 24px', textAlign: 'left', fontWeight: 600, color: '#6b7280' }}>결정</th>
-                  <th style={{ padding: '12px 24px', textAlign: 'left', fontWeight: 600, color: '#6b7280' }}>의견</th>
+                  <th style={thStyle}>제목</th>
+                  <th style={thStyle}>유형</th>
+                  <th style={thStyle}>상태</th>
+                  <th style={thStyle}>채널</th>
+                  <th style={thStyle}>계획일시</th>
+                  <th style={thStyle}>담당자</th>
                 </tr>
               </thead>
               <tbody>
-                {customers.map((customer, idx) => (
-                  <tr
-                    key={customer.id}
-                    onClick={() => handleCustomerClick(customer)}
-                    style={{ borderBottom: idx === customers.length - 1 ? 'none' : '1px solid #f3f4f6', cursor: 'pointer', transition: 'background 0.1s' }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
-                  >
-                    <td style={{ padding: '16px 24px' }}>
-                      <div style={{ fontWeight: 600, color: '#111827' }}>{customer.customerName}</div>
-                      <div style={{ fontSize: 12, color: '#9ca3af' }}>{customer.customerSeq}</div>
-                    </td>
-                    <td style={{ padding: '16px 24px', textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(customer.totalAr)}</td>
-                    <td style={{ padding: '16px 24px', textAlign: 'right', fontFamily: 'monospace', color: '#dc2626' }}>{formatCurrency(customer.overdue)}</td>
-                    <td style={{ padding: '16px 24px', textAlign: 'center' }}>
-                      <span style={{
-                        display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
-                        background: customer.riskLevel === 'high' ? '#ef4444' : customer.riskLevel === 'medium' ? '#f59e0b' : '#10b981'
-                      }} />
-                    </td>
-                    <td style={{ padding: '16px 24px' }}>
-                      {customer.decisionCode ? (
-                        <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 500, background: '#f3f4f6', color: '#374151' }}>
-                          {kanbanColumns.find(c => c.id === customer.decisionCode)?.title || customer.decisionCode}
-                        </span>
-                      ) : (
-                        <span style={{ color: '#d1d5db' }}>-</span>
-                      )}
-                    </td>
-                    <td style={{ padding: '16px 24px', color: '#6b7280', maxWidth: 300, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {customer.decisionComment || '-'}
-                    </td>
+                {activities.map((a) => (
+                  <tr key={a.id} style={trStyle}>
+                    <td style={tdStyle}>{a.subject || '-'}</td>
+                    <td style={tdStyle}>{a.activity_type || '-'}</td>
+                    <td style={tdStyle}>{a.activity_status || '-'}</td>
+                    <td style={tdStyle}>{a.channel || '-'}</td>
+                    <td style={tdStyle}>{fmtDate(a.planned_start_at) || '-'}</td>
+                    <td style={tdStyle}>{a.owner_name || a.sf_owner_id || '-'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
-        )}
+          )}
+        </Section>
+
+        {/* Unblock Requests */}
+        <Section title="매출통제 해제 품의 진행현황">
+          {unblocks.length === 0 ? (
+            <EmptyRow text="해제 요청이 없습니다." />
+          ) : (
+            <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>거래처</th>
+                  <th style={thStyle}>상태</th>
+                  <th style={thStyle}>요청일</th>
+                  <th style={thStyle}>목표 해제일</th>
+                  <th style={thStyle}>최근 결정</th>
+                  <th style={thStyle}>사유</th>
+                </tr>
+              </thead>
+              <tbody>
+                {unblocks.map((u) => (
+                  <tr key={u.id} style={trStyle}>
+                    <td style={tdStyle}>
+                      <div style={{ fontWeight: 600, color: '#111827' }}>{u.customer_name || '-'}</div>
+                      <div style={{ fontSize: 12, color: '#9ca3af' }}>{u.customer_seq}</div>
+                    </td>
+                    <td style={tdStyle}>{formatStatus(u.request_status)}</td>
+                    <td style={tdStyle}>{fmtDate(u.request_date)}</td>
+                    <td style={tdStyle}>{fmtDate(u.target_unblock_date)}</td>
+                    <td style={tdStyle}>{formatDecision(u.latest_decision)}</td>
+                    <td style={tdStyle}>{u.reason_text || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Section>
+
+        {/* Meeting Customers - credit_sales_opinion에서 조회 */}
+        <Section title="거래처별 회의 결과">
+          {salesOpinions.length === 0 ? (
+            <EmptyRow text="등록된 연체 의견이 없습니다." />
+          ) : (
+            <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>거래처</th>
+                  <th style={thStyle}>담당자</th>
+                  <th style={thStyle}>연체 의견</th>
+                </tr>
+              </thead>
+              <tbody>
+                {salesOpinions.map((op, idx) => (
+                  <tr key={op.id || idx} style={trStyle}>
+                    <td style={tdStyle}>
+                      <div style={{ fontWeight: 600, color: '#111827' }}>{op.customer_name}</div>
+                      <div style={{ fontSize: 12, color: '#9ca3af' }}>{op.customer_seq}</div>
+                    </td>
+                    <td style={tdStyle}>{op.emp_name || '-'}</td>
+                    <td style={{ ...tdStyle, whiteSpace: 'pre-wrap' }}>{op.opinion_text || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Section>
       </div>
-
-      {/* Slide-over Panel */}
-      {isPanelOpen && selectedCustomer && (
-        <>
-          <div
-            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.2)', backdropFilter: 'blur(2px)', zIndex: 40 }}
-            onClick={() => setIsPanelOpen(false)}
-          />
-          <div style={{
-            position: 'fixed', top: 0, right: 0, bottom: 0, width: 500, background: '#fff',
-            boxShadow: '-4px 0 24px rgba(0,0,0,0.15)', zIndex: 50, display: 'flex', flexDirection: 'column',
-            animation: 'slideIn 0.3s ease-out'
-          }}>
-            <div style={{ padding: 24, borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', background: '#f9fafb' }}>
-              <div>
-                <h2 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: 0 }}>{selectedCustomer.customerName}</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: 14, color: '#6b7280' }}>#{selectedCustomer.customerSeq} · {selectedCustomer.riskLevel.toUpperCase()} Risk</p>
-              </div>
-              <button
-                onClick={() => setIsPanelOpen(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 4 }}
-              >
-                <X size={24} />
-              </button>
-            </div>
-
-            <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 32 }}>
-              {/* Charts Section */}
-              <div>
-                <h3 style={{ fontSize: 14, fontWeight: 700, color: '#111827', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <BarChartIcon size={16} color="#2563eb" /> 채권 Aging 분석
-                </h3>
-                <div style={{ height: 200, background: '#fff', borderRadius: 12, border: '1px solid #f3f4f6', padding: 8 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={[
-                      { name: '정상', value: selectedCustomer.totalAr - selectedCustomer.overdue },
-                      { name: '1개월', value: selectedCustomer.overdue * 0.5 }, // Mock
-                      { name: '2개월', value: selectedCustomer.overdue * 0.3 },
-                      { name: '3개월+', value: selectedCustomer.overdue * 0.2 },
-                    ]}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                      <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-                      <Tooltip
-                        contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: 12 }}
-                        formatter={(val: number) => formatCurrency(val)}
-                      />
-                      <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                        {
-                          [0, 1, 2, 3].map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={index === 0 ? '#10b981' : index === 3 ? '#ef4444' : '#3b82f6'} />
-                          ))
-                        }
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Form Section */}
-              <div style={{ background: '#f9fafb', borderRadius: 12, padding: 20, border: '1px solid #e5e7eb' }}>
-                <h3 style={{ fontSize: 14, fontWeight: 700, color: '#111827', marginBottom: 16 }}>심사 결정 및 의견</h3>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>결정 (Decision)</label>
-                    <select
-                      value={decisionCode}
-                      onChange={(e) => setDecisionCode(e.target.value)}
-                      className="search-input"
-                      style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14 }}
-                    >
-                      <option value="WATCH">관찰 (Watch)</option>
-                      <option value="REVIEW_UNBLOCK">해제 검토</option>
-                      <option value="KEEP_BLOCK">차단 유지</option>
-                      <option value="APPROVED">승인</option>
-                      <option value="REJECTED">거부</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>의견 (Opinion)</label>
-                    <textarea
-                      value={opinionText}
-                      onChange={(e) => setOpinionText(e.target.value)}
-                      rows={4}
-                      className="search-input"
-                      style={{ width: '100%', padding: '12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, resize: 'none' }}
-                      placeholder="심사 의견을 상세히 입력하세요..."
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ padding: 24, borderTop: '1px solid #f3f4f6', background: '#f9fafb' }}>
-              <button
-                onClick={handleSaveOpinion}
-                className="btn"
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  background: '#2563eb',
-                  color: 'white',
-                  fontWeight: 700,
-                  borderRadius: 12,
-                  border: 'none',
-                  fontSize: 15,
-                  boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.2)'
-                }}
-              >
-                저장하기
-              </button>
-            </div>
-          </div>
-        </>
+      {loading && (
+        <div style={{ position: 'absolute', top: 12, right: 12, fontSize: 12, color: '#6b7280' }}>
+          불러오는 중...
+        </div>
       )}
-      <style>{`
-        @keyframes slideIn {
-          from { transform: translateX(100%); }
-          to { transform: translateX(0); }
-        }
-      `}</style>
     </div>
+  )
+}
+
+const thStyle: React.CSSProperties = { padding: '10px 12px', textAlign: 'left', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #e5e7eb', fontSize: 13 }
+const tdStyle: React.CSSProperties = { padding: '10px 12px', borderBottom: '1px solid #f3f4f6', fontSize: 13, color: '#374151', verticalAlign: 'top' }
+const trStyle: React.CSSProperties = { transition: 'background 0.1s' }
+
+function SummaryCard({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
+  return (
+    <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ width: 34, height: 34, borderRadius: 10, background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ fontSize: 12, color: '#6b7280' }}>{label}</span>
+        <span style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>{value}</span>
+      </div>
+    </div>
+  )
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 16 }}>
+      <h2 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 700, color: '#111827', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span>{title}</span>
+      </h2>
+      {children}
+    </div>
+  )
+}
+
+function EmptyRow({ text }: { text: string }) {
+  return (
+    <div style={{ padding: 16, color: '#6b7280', fontSize: 13 }}>{text}</div>
   )
 }

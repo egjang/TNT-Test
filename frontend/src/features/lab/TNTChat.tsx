@@ -183,7 +183,7 @@ export function TNTChat() {
           <MessageCircle size={24} strokeWidth={2.5} />
         </div>
         <div style={{ flex: 1, position: 'relative' }}>
-          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em' }}>TNT Chat</h1>
+          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em' }}>대화해~~TNT</h1>
           <p style={{ margin: '2px 0 0', fontSize: 12, opacity: 0.7, fontWeight: 400 }}>AI-Powered RAG Assistant</p>
         </div>
         {currentStore && (

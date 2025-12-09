@@ -39,6 +39,7 @@ import { TNTChat } from '../lab/TNTChat'
 import { ARAgingDashboard } from '../credit/ARAgingDashboard'
 import { CreditMeetingList } from '../credit/CreditMeetingList'
 import { CreditMeetingDetail } from '../credit/CreditMeetingDetail'
+import { CreditMeetingWorkflow } from '../credit/CreditMeetingWorkflow'
 import { UnblockingRequestForm } from '../credit/UnblockingRequestForm'
 import { CompetitorManagement } from '../competitor/CompetitorManagement'
 
@@ -105,6 +106,8 @@ export function MainView({ selectedKey }: Props) {
         <Complaint />
       ) : selectedKey === 'credit:ar-aging' ? (
         <ARAgingDashboard />
+      ) : selectedKey === 'credit:workflow' ? (
+        <CreditMeetingWorkflow />
       ) : selectedKey === 'credit:meetings' ? (
         <CreditMeetingList />
       ) : selectedKey.startsWith('credit:meeting:') ? (

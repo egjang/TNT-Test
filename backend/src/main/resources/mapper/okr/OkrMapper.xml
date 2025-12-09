@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.tnt.sales.okr.mapper.OkrMapper">
+
+    <!-- Cycle -->
+    <insert id="insertCycle" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO okr_cycle (
+            company_seq, cycle_name, cycle_type_cd, start_date, end_date, status_cd, created_by, updated_by
+        ) VALUES (
+            #{companySeq}, #{cycleName}, #{cycleTypeCd}, #{startDate}, #{endDate}, #{statusCd}, #{createdBy}, #{updatedBy}
+        )
+    </insert>
+
+    <resultMap id="OkrCycleResult" type="com.tnt.sales.okr.model.OkrCycle">
+        <id property="id" column="id"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="updatedBy" column="updated_by"/>
+        <result property="companySeq" column="company_seq"/>
+        <result property="cycleName" column="cycle_name"/>
+        <result property="cycleTypeCd" column="cycle_type_cd"/>
+        <result property="startDate" column="start_date"/>
+        <result property="endDate" column="end_date"/>
+        <result property="statusCd" column="status_cd"/>
+    </resultMap>
+
+    <select id="findAllCycles" resultMap="OkrCycleResult">
+        SELECT 
+            id,
+            created_at,
+            updated_at,
+            created_by,
+            updated_by,
+            company_seq,
+            cycle_name,
+            cycle_type_cd,
+            start_date,
+            end_date,
+            status_cd
+        FROM okr_cycle
+        WHERE company_seq = #{companySeq}
+        ORDER BY start_date DESC
+    </select>
+
+    <select id="findCycleById" resultType="com.tnt.sales.okr.model.OkrCycle">
+        SELECT * FROM okr_cycle WHERE id = #{id}
+    </select>
+
+    <update id="updateCycle">
+        UPDATE okr_cycle
+        SET cycle_name = #{cycleName},
+            cycle_type_cd = #{cycleTypeCd},
+            start_date = #{startDate},
+            end_date = #{endDate},
+            status_cd = #{statusCd},
+            updated_at = now(),
+            updated_by = #{updatedBy}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteCycle">
+        DELETE FROM okr_cycle WHERE id = #{id}
+    </delete>
+
+    <select id="countItemsByCycleId" resultType="int">
+        SELECT COUNT(*) FROM okr_item WHERE okr_cycle_id = #{cycleId}
+    </select>
+
+    <!-- Item -->
+    <insert id="insertItem" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO okr_item (
+            okr_cycle_id, owner_id, parent_okr_item_id, okr_type_cd, okr_title, okr_description,
+            target_value, current_value, unit, target_direction, progress_rate, weight_rate,
+            status_cd, sort_order, created_by, updated_by
+        ) VALUES (
+            #{okrCycleId}, #{ownerId}, #{parentOkrItemId}, #{okrTypeCd}, #{okrTitle}, #{okrDescription},
+            #{targetValue}, #{currentValue}, #{unit}, #{targetDirection}, #{progressRate}, #{weightRate},
+            #{statusCd}, #{sortOrder}, #{createdBy}, #{updatedBy}
+        )
+    </insert>
+
+    <update id="updateItem">
+        UPDATE okr_item
+        SET okr_title = #{okrTitle},
+            okr_description = #{okrDescription},
+            target_value = #{targetValue},
+            current_value = #{currentValue},
+            unit = #{unit},
+            target_direction = #{targetDirection},
+            progress_rate = #{progressRate},
+            weight_rate = #{weightRate},
+            status_cd = #{statusCd},
+            updated_at = now(),
+            updated_by = #{updatedBy}
+        WHERE id = #{id}
+    </update>
+
+    <select id="findItemsByCycleId" resultType="com.tnt.sales.okr.model.OkrItem">
+        SELECT i.*, e.emp_name as owner_name
+        FROM okr_item i
+        LEFT JOIN employee e ON i.owner_id = e.assignee_id
+        WHERE i.okr_cycle_id = #{cycleId}
+        ORDER BY i.parent_okr_item_id NULLS FIRST, i.sort_order, i.id
+    </select>
+
+    <select id="findItemsByOwnerId" resultType="com.tnt.sales.okr.model.OkrItem">
+        SELECT i.*, e.emp_name as owner_name
+        FROM okr_item i
+        LEFT JOIN employee e ON i.owner_id = e.assignee_id
+        WHERE i.okr_cycle_id = #{cycleId}
+          AND i.owner_id = #{ownerId}
+        ORDER BY i.sort_order
+    </select>
+
+    <select id="findItemById" resultType="com.tnt.sales.okr.model.OkrItem">
+        SELECT * FROM okr_item WHERE id = #{id}
+    </select>
+
+    <delete id="deleteItem">
+        DELETE FROM okr_item WHERE id = #{id}
+    </delete>
+
+    <update id="updateItemStatus">
+        UPDATE okr_item SET status_cd = #{statusCd}, updated_at = NOW() WHERE id = #{id}
+    </update>
+
+    <select id="countChildItems" resultType="int">
+        SELECT COUNT(*) FROM okr_item WHERE parent_okr_item_id = #{parentItemId}
+    </select>
+
+    <select id="findItemsByMemberAssigneeId" resultType="com.tnt.sales.okr.model.OkrItem">
+        SELECT DISTINCT i.*, e.emp_name as owner_name
+        FROM okr_item i
+        INNER JOIN okr_member m ON i.id = m.okr_item_id
+        LEFT JOIN employee e ON i.owner_id = e.assignee_id
+        WHERE i.okr_cycle_id = #{cycleId}
+          AND m.assignee_id = #{assigneeId}
+        ORDER BY i.sort_order, i.id
+    </select>
+
+    <!-- Member -->
+    <insert id="insertMember" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO okr_member (
+            company_seq, assignee_id, emp_name, dept_seq, dept_name, okr_role_cd, okr_item_id, created_by, updated_by
+        ) VALUES (
+            #{companySeq}, #{assigneeId}, #{empName}, #{deptSeq}, #{deptName}, #{okrRoleCd}, #{okrItemId}, #{createdBy}, #{updatedBy}
+        )
+    </insert>
+
+    <select id="findMembersByItemId" resultType="com.tnt.sales.okr.model.OkrMember">
+        SELECT * FROM okr_member WHERE okr_item_id = #{itemId}
+    </select>
+
+    <delete id="deleteMembersByItemId">
+        DELETE FROM okr_member WHERE okr_item_id = #{itemId}
+    </delete>
+
+    <!-- Approval -->
+    <insert id="insertApproval" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO okr_approval (
+            okr_item_id, approver_id, action_cd, comment, created_by, updated_by
+        ) VALUES (
+            #{okrItemId}, #{approverId}, #{actionCd}, #{comment}, #{createdBy}, #{updatedBy}
+        )
+    </insert>
+
+    <select id="findApprovalsByItemId" resultType="com.tnt.sales.okr.model.OkrApproval">
+        SELECT a.*, e.emp_name as approver_name
+        FROM okr_approval a
+        LEFT JOIN employee e ON a.approver_id = e.assignee_id
+        WHERE a.okr_item_id = #{itemId}
+        ORDER BY a.created_at DESC
+    </select>
+
+    <select id="findApprovalsByApproverId" resultType="com.tnt.sales.okr.model.OkrApproval">
+        SELECT a.*, e.emp_name as approver_name, i.okr_title, oe.emp_name as owner_name
+        FROM okr_approval a
+        LEFT JOIN employee e ON a.approver_id = e.assignee_id
+        LEFT JOIN okr_item i ON a.okr_item_id = i.id
+        LEFT JOIN employee oe ON i.owner_id = oe.assignee_id
+        WHERE a.approver_id = #{approverId}
+        ORDER BY a.created_at DESC
+    </select>
+
+    <select id="findPendingApprovalItems" resultType="com.tnt.sales.okr.model.OkrItem">
+        SELECT i.*, e.emp_name as owner_name
+        FROM okr_item i
+        LEFT JOIN employee e ON i.owner_id = e.assignee_id
+        WHERE i.okr_cycle_id = #{cycleId}
+          AND i.status_cd = 'SUBMITTED'
+        ORDER BY i.created_at DESC
+    </select>
+
+    <!-- Evaluation -->
+    <insert id="insertEvaluation" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO okr_evaluation (
+            okr_item_id, evaluator_id, evaluation_type_cd, score, achievement_rate, comment, created_by, updated_by
+        ) VALUES (
+            #{okrItemId}, #{evaluatorId}, #{evaluationTypeCd}, #{score}, #{achievementRate}, #{comment}, #{createdBy}, #{updatedBy}
+        )
+    </insert>
+
+    <update id="updateEvaluation">
+        UPDATE okr_evaluation
+        SET score = #{score},
+            achievement_rate = #{achievementRate},
+            comment = #{comment},
+            updated_at = now(),
+            updated_by = #{updatedBy}
+        WHERE id = #{id}
+    </update>
+
+    <select id="findEvaluationsByItemId" resultType="com.tnt.sales.okr.model.OkrEvaluation">
+        SELECT ev.*, e.emp_name as evaluator_name
+        FROM okr_evaluation ev
+        LEFT JOIN employee e ON ev.evaluator_id = e.assignee_id
+        WHERE ev.okr_item_id = #{itemId}
+        ORDER BY ev.evaluation_type_cd, ev.created_at DESC
+    </select>
+
+    <select id="findEvaluationByItemAndEvaluator" resultType="com.tnt.sales.okr.model.OkrEvaluation">
+        SELECT ev.*, e.emp_name as evaluator_name
+        FROM okr_evaluation ev
+        LEFT JOIN employee e ON ev.evaluator_id = e.assignee_id
+        WHERE ev.okr_item_id = #{itemId}
+          AND ev.evaluator_id = #{evaluatorId}
+          AND ev.evaluation_type_cd = #{evaluationTypeCd}
+        LIMIT 1
+    </select>
+
+</mapper>

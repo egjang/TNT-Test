@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { getAssigneeId, getEmpName } from '../../utils/auth'
 
 interface ActivityAnalysisAIModalProps {
@@ -328,7 +329,67 @@ export function ActivityAnalysisAIModal({ isOpen, onClose }: ActivityAnalysisAIM
               }}
               className="markdown-content"
             >
-              <ReactMarkdown>{analysis}</ReactMarkdown>
+              <style>{`
+                .markdown-content table {
+                  width: 100%;
+                  border-collapse: collapse;
+                  margin: 16px 0;
+                  font-size: 13px;
+                }
+                .markdown-content th {
+                  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                  color: white;
+                  padding: 12px 16px;
+                  text-align: left;
+                  font-weight: 600;
+                  border: none;
+                }
+                .markdown-content th:first-child {
+                  border-radius: 8px 0 0 0;
+                }
+                .markdown-content th:last-child {
+                  border-radius: 0 8px 0 0;
+                }
+                .markdown-content td {
+                  padding: 12px 16px;
+                  border-bottom: 1px solid var(--border);
+                  vertical-align: top;
+                }
+                .markdown-content tr:hover td {
+                  background: rgba(102, 126, 234, 0.05);
+                }
+                .markdown-content tr:last-child td:first-child {
+                  border-radius: 0 0 0 8px;
+                }
+                .markdown-content tr:last-child td:last-child {
+                  border-radius: 0 0 8px 0;
+                }
+                .markdown-content h1, .markdown-content h2, .markdown-content h3 {
+                  margin-top: 24px;
+                  margin-bottom: 12px;
+                  color: var(--text);
+                }
+                .markdown-content h2 {
+                  font-size: 18px;
+                  border-bottom: 2px solid #667eea;
+                  padding-bottom: 8px;
+                }
+                .markdown-content h3 {
+                  font-size: 16px;
+                  color: #667eea;
+                }
+                .markdown-content ul, .markdown-content ol {
+                  margin: 12px 0;
+                  padding-left: 24px;
+                }
+                .markdown-content li {
+                  margin: 6px 0;
+                }
+                .markdown-content strong {
+                  color: #667eea;
+                }
+              `}</style>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{analysis}</ReactMarkdown>
             </div>
           )}
 

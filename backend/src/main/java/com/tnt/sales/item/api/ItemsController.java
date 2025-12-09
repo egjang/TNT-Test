@@ -354,7 +354,7 @@ import java.util.Map;
             sql.append("    AND i.").append(invColCust).append(" = ?\n");
         }
         if (useInvCompanyFilter) {
-            sql.append("    AND (UPPER(coalesce(i.company_type,'')) = UPPER(?) OR UPPER(coalesce(i.company_type,'')) = 'ALL')\n");
+            sql.append("    AND UPPER(coalesce(i.company_type,'')) = UPPER(?)\n");
         }
         sql.append("  GROUP BY i.").append(invColItemSeq).append(", i.").append(invColItemName).append("\n");
         sql.append("), itm AS (\n");
@@ -371,7 +371,7 @@ import java.util.Map;
             sql.append("    AND it.").append(itemColName).append(" ILIKE ?\n");
         }
         if (useItemCompanyFilter) {
-            sql.append("    AND (UPPER(coalesce(it.").append(itemColCompanyType).append(",'')) = UPPER(?) OR UPPER(coalesce(it.").append(itemColCompanyType).append(",'')) = 'ALL')\n");
+            sql.append("    AND UPPER(coalesce(it.").append(itemColCompanyType).append(",'')) = UPPER(?)\n");
         }
         sql.append("), src AS (\n");
         sql.append("  SELECT item_seq, item_name, inv_date, inv_date_text, cur_amt, qty, 0 AS src_pri, company_type, item_std_unit, customer_seq FROM inv\n")

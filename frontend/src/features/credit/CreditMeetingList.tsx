@@ -17,7 +17,7 @@ type CreditMeeting = {
   id: number
   title: string
   meetingDate: string
-  status: 'in_progress' | 'completed'
+  status: MeetingStatus
   customerCount: number
   highRiskCount: number
   mediumRiskCount: number
@@ -26,6 +26,8 @@ type CreditMeeting = {
   [key: string]: any
 }
 
+type MeetingStatus = 'PLANNED' | 'DATA_GENERATED' | 'ON_GOING' | 'FINISHED' | 'POSTPONED'
+
 const COLORS = {
   high: '#ef4444',
   medium: '#f59e0b',
@@ -33,11 +35,19 @@ const COLORS = {
   default: '#e5e7eb'
 }
 
+const STATUS_META: Record<MeetingStatus, { label: string; bg: string; color: string }> = {
+  PLANNED: { label: '회의 예정', bg: '#e0f2fe', color: '#0369a1' },
+  DATA_GENERATED: { label: '자료 생성', bg: '#ede9fe', color: '#6d28d9' },
+  ON_GOING: { label: '진행중', bg: '#fef3c7', color: '#b45309' },
+  FINISHED: { label: '완료', bg: '#dcfce7', color: '#15803d' },
+  POSTPONED: { label: '연기', bg: '#fee2e2', color: '#b91c1c' }
+}
+
 export function CreditMeetingList() {
   const [meetings, setMeetings] = useState<CreditMeeting[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [statusFilter, setStatusFilter] = useState<'all' | 'in_progress' | 'completed'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | MeetingStatus>('all')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [keyword, setKeyword] = useState('')
@@ -57,6 +67,7 @@ export function CreditMeetingList() {
       if (statusFilter !== 'all') params.append('status', statusFilter)
       if (fromDate) params.append('fromDate', fromDate)
       if (toDate) params.append('toDate', toDate)
+      if (keyword.trim()) params.append('keyword', keyword.trim())
 
       const res = await fetch(`/api/v1/credit/meetings?${params.toString()}`)
       if (!res.ok) throw new Error(`API 호출 실패: ${res.status}`)
@@ -67,11 +78,11 @@ export function CreditMeetingList() {
         id: m.id,
         title: m.meeting_name,
         meetingDate: m.meeting_date,
-        status: m.meeting_status?.toLowerCase() === 'closed' ? 'completed' : 'in_progress',
+        status: (String(m.meeting_status || '').toUpperCase() as MeetingStatus) || 'PLANNED',
         customerCount: m.customer_count || 0,
-        highRiskCount: m.high_risk_count || 0,
-        mediumRiskCount: m.medium_risk_count || 0,
-        lowRiskCount: m.low_risk_count || 0,
+        highRiskCount: Number(m.high_risk_count) || 0,
+        mediumRiskCount: Number(m.medium_risk_count) || 0,
+        lowRiskCount: Number(m.low_risk_count) || 0,
         createdAt: m.created_at,
       }))
 
@@ -150,27 +161,7 @@ export function CreditMeetingList() {
         <div style={{ marginBottom: 24, display: 'flex', alignItems: 'baseline', gap: 12, justifyContent: 'space-between' }}>
           <div>
             <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111827', margin: 0 }}>채권회의</h1>
-            <p style={{ margin: 0, color: '#6b7280', fontSize: 14 }}>월별 채권 심사 및 리스크 관리 현황</p>
           </div>
-          <button
-            className="btn"
-            onClick={() => setShowCreateModal(true)}
-            style={{
-              height: 36,
-              padding: '0 16px',
-              fontSize: 13,
-              fontWeight: 600,
-              background: '#3b82f6',
-              borderColor: '#3b82f6',
-              color: 'white',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6
-            }}
-          >
-            <Plus size={16} />
-            새 회의 생성
-          </button>
         </div>
 
         {/* Controls Row */}
@@ -179,11 +170,14 @@ export function CreditMeetingList() {
             className="search-input"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as any)}
-            style={{ width: 120 }}
+            style={{ width: 160, height: 40, fontSize: 14 }}
           >
             <option value="all">전체 상태</option>
-            <option value="in_progress">진행중</option>
-            <option value="completed">완료</option>
+            <option value="PLANNED">회의 예정</option>
+            <option value="DATA_GENERATED">자료 생성</option>
+            <option value="ON_GOING">진행중</option>
+            <option value="FINISHED">완료</option>
+            <option value="POSTPONED">연기</option>
           </select>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -192,7 +186,7 @@ export function CreditMeetingList() {
               className="search-input"
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
-              style={{ width: 130 }}
+              style={{ width: 170, height: 40, fontSize: 14 }}
             />
             <span style={{ color: '#9ca3af' }}>~</span>
             <input
@@ -200,20 +194,19 @@ export function CreditMeetingList() {
               className="search-input"
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
-              style={{ width: 130 }}
+              style={{ width: 170, height: 40, fontSize: 14 }}
             />
           </div>
 
-          <div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative', flex: '1 1 260px', minWidth: 240, maxWidth: 360 }}>
             <input
               type="text"
               className="search-input"
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
               placeholder="회의명 검색"
-              style={{ width: 200, paddingLeft: 30 }}
+              style={{ width: '100%', height: 40, fontSize: 14, paddingLeft: 14 }}
             />
-            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
           </div>
 
           <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
@@ -297,16 +290,16 @@ export function CreditMeetingList() {
                   <div style={{ padding: 20, borderBottom: '1px solid #f3f4f6', background: 'linear-gradient(to right, #fff, #f9fafb)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {meeting.status === 'completed' ? (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600, background: '#dcfce7', color: '#15803d' }}>
-                            <CheckCircle2 size={12} /> 완료됨
-                          </span>
-                        ) : (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600, background: '#dbeafe', color: '#1d4ed8' }}>
-                            <Clock size={12} /> 진행중
-                          </span>
-                        )}
-                        <span style={{ fontSize: 11, color: '#9ca3af' }}>{meeting.createdAt.substring(0, 10)} 생성</span>
+                        {(() => {
+                          const meta = STATUS_META[meeting.status] || STATUS_META.PLANNED
+                          const Icon = meeting.status === 'FINISHED' ? CheckCircle2 : meeting.status === 'ON_GOING' ? Clock : Calendar
+                          return (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600, background: meta.bg, color: meta.color }}>
+                              <Icon size={12} /> {meta.label}
+                            </span>
+                          )
+                        })()}
+                        <span style={{ fontSize: 11, color: '#9ca3af' }}>{meeting.createdAt?.substring(0, 10) || '-'} 생성</span>
                       </div>
                       <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <ChevronRight size={16} color="#9ca3af" />

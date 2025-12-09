@@ -39,7 +39,7 @@ export function OrderSheet() {
   const [, setAdding] = useState(false)
 
   // Invoice summary for selected customer
-  const [invSummary, setInvSummary] = useState<Array<{ itemSeq: any; itemName: string; companyType?: string | null; recentDate: string; totalAmt: number; totalQty: number }>>([])
+  const [invSummary, setInvSummary] = useState<Array<{ itemSeq: any; itemName: string; companyType?: string | null; itemStdUnit?: string | null; recentDate: string; totalAmt: number; totalQty: number }>>([])
 
   // Stock availability map: itemSeq/itemName -> hasStock (true = has stock, false = no stock)
   const [stockStatusMap, setStockStatusMap] = useState<Record<string, boolean>>({})
@@ -154,22 +154,12 @@ export function OrderSheet() {
     }
   }
 
-  // Add item to cart
-  async function addToCart(it: { itemSeq: any; itemName: string; invoiceDate?: string | null; itemStdUnit?: string | null; companyType?: string | null }) {
+  // Add item to cart (품목 검색/거래내역 API에서 이미 itemStdUnit을 가져옴 - spec API 호출 불필요)
+  function addToCart(it: { itemSeq: any; itemName: string; invoiceDate?: string | null; itemStdUnit?: string | null; companyType?: string | null }) {
     if (it == null || it.itemName == null) return
     setAdding(true)
     try {
-      let spec: string | undefined = undefined
-      let stdUnit: string | undefined = typeof it.itemStdUnit === 'string' ? it.itemStdUnit : undefined
-      // Use selected item's companyType and itemSeq directly
-      const r = await fetch(`/api/v1/items/spec?companyType=${encodeURIComponent(String(it.companyType || ''))}&itemSeq=${encodeURIComponent(String(it.itemSeq))}`)
-      if (r.ok) {
-        const data = await r.json().catch(() => ({}))
-        if (data && data.itemSpec) spec = String(data.itemSpec)
-        if (!stdUnit && data && data.itemStdUnit) {
-          stdUnit = String(data.itemStdUnit)
-        }
-      }
+      const stdUnit = it.itemStdUnit ?? undefined
       const cartRaw = localStorage.getItem('tnt.sales.ordersheet.cart')
       const currentCart = cartRaw ? JSON.parse(cartRaw) : []
       const idx = Array.isArray(currentCart) ? currentCart.findIndex((x: any) => String(x.itemName) === String(it.itemName)) : -1
@@ -178,8 +168,7 @@ export function OrderSheet() {
         setAdding(false)
         return
       } else {
-        // Use itemSeq and companyType from selected item directly
-        const newItem = { itemSeq: it.itemSeq, itemName: it.itemName, itemSpec: spec || '', qty: '', itemStdUnit: stdUnit || it.itemStdUnit || undefined, companyType: it.companyType || null }
+        const newItem = { itemSeq: it.itemSeq, itemName: it.itemName, itemSpec: '', qty: '', itemStdUnit: stdUnit, companyType: it.companyType || null }
         currentCart.push(newItem)
       }
       localStorage.setItem('tnt.sales.ordersheet.cart', JSON.stringify(currentCart))
@@ -363,29 +352,31 @@ export function OrderSheet() {
       const arr = await r.json().catch(() => [])
       if (!Array.isArray(arr)) { setInvSummary([]); return }
       const oneYearAgo = Date.now() - 365 * 24 * 60 * 60 * 1000
-      const map: Record<string, { itemSeq: any; itemName: string; companyType: string | null; recent: number; totalAmt: number; totalQty: number }> = {}
+      const map: Record<string, { itemSeq: any; itemName: string; companyType: string | null; itemStdUnit: string | null; recent: number; totalAmt: number; totalQty: number }> = {}
       for (const x of arr) {
         const itemName = String(x?.itemName ?? x?.item_name ?? '').trim()
         if (!itemName) continue
         const itemSeq = x?.itemSeq ?? x?.item_seq ?? null
         const companyType = x?.companyType ?? x?.company_type ?? null
+        const itemStdUnit = x?.itemStdUnit ?? x?.item_std_unit ?? null
         const amt = Number(x?.curAmt ?? x?.cur_amt ?? 0) || 0
         const qty = Number(x?.qty ?? 0) || 0
         const dstr = String(x?.invoiceDate ?? x?.invoice_date ?? '')
         const t = Date.parse(dstr) || Date.parse(dstr.replace(' ', 'T')) || NaN
         if (!Number.isFinite(t) || t < oneYearAgo) continue
         const key = itemSeq != null ? String(itemSeq) : itemName
-        const rec = map[key] || { itemSeq, itemName, companyType: companyType || null, recent: 0, totalAmt: 0, totalQty: 0 }
+        const rec = map[key] || { itemSeq, itemName, companyType: companyType || null, itemStdUnit: itemStdUnit || null, recent: 0, totalAmt: 0, totalQty: 0 }
         rec.totalAmt += amt
         rec.totalQty += qty
         if (t > rec.recent) rec.recent = t
         if (rec.itemSeq == null && itemSeq != null) rec.itemSeq = itemSeq
         if (!rec.companyType && companyType) rec.companyType = companyType
+        if (!rec.itemStdUnit && itemStdUnit) rec.itemStdUnit = itemStdUnit
         map[key] = rec
       }
       const out = Object.values(map)
         .sort((a, b) => b.recent - a.recent || a.itemName.localeCompare(b.itemName, 'ko', { sensitivity: 'base' }))
-        .map(it => ({ itemSeq: it.itemSeq, itemName: it.itemName, companyType: it.companyType, recentDate: new Date(it.recent).toISOString().slice(0, 10), totalAmt: it.totalAmt, totalQty: it.totalQty }))
+        .map(it => ({ itemSeq: it.itemSeq, itemName: it.itemName, companyType: it.companyType, itemStdUnit: it.itemStdUnit, recentDate: new Date(it.recent).toISOString().slice(0, 10), totalAmt: it.totalAmt, totalQty: it.totalQty }))
       setInvSummary(out)
       // Check stock for invoice summary items
       if (out.length > 0) {
@@ -426,14 +417,14 @@ export function OrderSheet() {
     }
   }
 
-  async function addToCartFromSummary(it: { itemSeq: any; itemName: string; companyType?: string | null }) {
+  async function addToCartFromSummary(it: { itemSeq: any; itemName: string; companyType?: string | null; itemStdUnit?: string | null }) {
     let resolved = it
     if (!resolved.itemSeq) {
       const found = await resolveItemByName(it.itemName)
       if (!found) return
       resolved = { ...resolved, ...found }
     }
-    await addToCart({ itemSeq: resolved.itemSeq, itemName: resolved.itemName, companyType: resolved.companyType || undefined })
+    addToCart({ itemSeq: resolved.itemSeq, itemName: resolved.itemName, companyType: resolved.companyType || undefined, itemStdUnit: resolved.itemStdUnit || undefined })
   }
 
   // Remove item from cart

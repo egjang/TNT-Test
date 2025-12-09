@@ -455,7 +455,12 @@ public class CustomerController {
         String companySelectExpr = hasInvoiceCompanyType ? ("i." + colCompany) : "NULL::text";
         String itemSeqSelectExpr = hasInvoiceItemSeq ? ("i." + colItemSeq) : "NULL::bigint";
         String itemStdUnitExpr = (hasInvoiceItemSeq && hasItemStdUnit) ? ("coalesce(it." + itemColStdUnit + ", '')") : "NULL::text";
-        String itemJoinClause = (hasInvoiceItemSeq && hasItemTable) ? ("LEFT JOIN " + itemTbl + " it ON it." + itemColSeq + " = i." + colItemSeq) : "";
+        // item JOIN에 company_type 조건 추가 (동일 item_seq가 TNT/DYS에 각각 존재할 수 있음)
+        String itemJoinClause = (hasInvoiceItemSeq && hasItemTable && hasInvoiceCompanyType)
+            ? ("LEFT JOIN " + itemTbl + " it ON it." + itemColSeq + " = i." + colItemSeq + " AND UPPER(coalesce(it.company_type,'')) = UPPER(coalesce(i." + colCompany + ",''))")
+            : (hasInvoiceItemSeq && hasItemTable)
+                ? ("LEFT JOIN " + itemTbl + " it ON it." + itemColSeq + " = i." + colItemSeq)
+                : "";
 
         // Primary query expects qty column; fallback handles schema without qty
         String sqlPrimary = "SELECT " +

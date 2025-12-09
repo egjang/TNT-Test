@@ -130,7 +130,8 @@ export function getAllMenuItems(): MenuItem[] {
       label: '매출/채권',
       icon: CircleDollarSign,
       children: [
-        { key: 'credit:meetings', label: '채권회의' },
+        { key: 'credit:workflow', label: '채권회의 Workflow' },
+        { key: 'credit:meetings', label: '채권회의 관리' },
         { key: 'credit:ar-aging', label: '연체채권 현황' },
         { key: 'credit:unblocking', label: '매출통제 해제' },
       ],
@@ -160,6 +161,7 @@ export function getAllMenuItems(): MenuItem[] {
         { key: 'lab:standard-c360', label: 'Standard C360' },
         { key: 'lab:standard-map', label: '시도 경계 지도' },
         { key: 'lab:quote', label: '견적(CD)' },
+        { key: 'lab:ok-tnt', label: 'OKR TNT' },
       ],
     },
   ]

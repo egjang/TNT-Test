@@ -51,6 +51,67 @@ updated_by      VARCHAR(100) NOT NULL DEFAULT CURRENT_USER
 
 ## 데이터베이스 설정
 
-- 로컬 개발: `168.107.43.244:5432/postgres`
-- 운영 환경: `10.0.0.195:5432/postgres`
+### PostgreSQL 접속 정보
+| 환경 | IP | Port | Database | Username | Password |
+|------|-----|------|----------|----------|----------|
+| **개발 (dev)** | 168.107.43.244 | 5432 | postgres | postgres | TNTdys1234 |
+| **운영 (prod)** | 10.0.0.195 | 5432 | postgres | postgres | TNTdys1234 |
+
+### 설정 파일 위치
+- 개발: `backend/src/main/resources/application-postgres.yml`
+- 운영: `backend/src/main/resources/application-prod.yml`
 - `MultiDataSourceConfig.java`에서 `app.datasource.pg.*` 설정 사용
+
+### psql 접속 명령어
+```bash
+# 개발 환경
+PGPASSWORD=TNTdys1234 psql -h 168.107.43.244 -U postgres -d postgres
+
+# 운영 환경
+PGPASSWORD=TNTdys1234 psql -h 10.0.0.195 -U postgres -d postgres
+```
+
+### MSSQL 접속 정보 (ERP 연동)
+- URL: `220.73.213.73:14233`
+- Database: TNT
+- 용도: 기간계 ERP 데이터 조회 (읽기 전용)
+
+## 코드 아키텍처 규칙
+
+### Service 클래스 분리 원칙
+
+**중요**: 새로운 도메인 기능 추가 시 기존 Service 클래스에 메서드를 추가하지 않는다.
+
+#### 규칙
+1. **Service 클래스 크기 제한**: 단일 Service 클래스는 **300줄 이하** 유지
+2. **도메인별 분리**: 새 도메인 기능은 별도 Service 클래스로 생성
+3. **기존 대형 Service 참고**: `CreditService.java`(2,365줄)는 분리가 필요한 안티패턴 예시
+
+#### 도메인별 Service 분리 예시
+```
+❌ 잘못된 예 (모든 기능을 CreditService에 추가)
+CreditService.java (2,365줄)
+  - AR Aging 조회
+  - 회의 관리
+  - 해제 요청
+  - 활동 관리
+  - ...
+
+✅ 올바른 예 (도메인별 분리)
+├── ArAgingService.java (~300줄)
+├── CreditMeetingService.java (~400줄)
+├── UnblockRequestService.java (~500줄)
+├── MeetingRemarkService.java (~150줄)
+└── CreditActivityService.java (~150줄)
+```
+
+#### 새 기능 추가 시 체크리스트
+1. 기존 Service 파일 라인 수 확인 (`wc -l`)
+2. 300줄 초과 시 → 새 Service 클래스 생성
+3. Controller에서 새 Service 주입
+4. 기존 API 엔드포인트 유지 (내부 구조만 개선)
+
+### Frontend 컴포넌트 규칙
+- 컴포넌트 파일은 **500줄 이하** 유지
+- 공통 로직은 `hooks/` 또는 `utils/`로 분리
+- 타입 정의는 `types/` 디렉토리에 별도 관리

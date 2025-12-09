@@ -6,8 +6,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 @SpringBootApplication
-@EnableConfigurationProperties({FeatureFlags.class})
+@EnableConfigurationProperties({ FeatureFlags.class })
 public class TntSalesApplication {
+    // Force restart
     public static void main(String[] args) {
         SpringApplication.run(TntSalesApplication.class, args);
     }

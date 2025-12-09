@@ -63,6 +63,12 @@ const QuotePage = React.lazy(() => import('./features/lab/quote/QuotePage').then
 const QuoteList = React.lazy(() => import('./features/quote/QuoteList').then(m => ({ default: m.QuoteList })))
 const QuoteForm = React.lazy(() => import('./features/quote/QuoteForm').then(m => ({ default: m.QuoteForm })))
 const TNTChatRightPanel = React.lazy(() => import('./features/lab/TNTChatRightPanel').then(m => ({ default: m.TNTChatRightPanel })))
+const OkTnt = React.lazy(() => import('./features/lab/OkTnt').then(m => ({ default: m.OkTnt })))
+const CreditWorkflowRightPanel = React.lazy(() => import('./features/credit/CreditWorkflowRightPanel').then(m => ({ default: m.CreditWorkflowRightPanel })))
+const UnblockMainPage = React.lazy(() => import('./features/credit/UnblockMainPage').then(m => ({ default: m.UnblockMainPage })))
+const UnblockStatsRightPanel = React.lazy(() => import('./features/credit/UnblockStatsRightPanel').then(m => ({ default: m.UnblockStatsRightPanel })))
+const UnblockCreditRightPanel = React.lazy(() => import('./features/credit/UnblockCreditRightPanel').then(m => ({ default: m.UnblockCreditRightPanel })))
+import { CreditWorkflowProvider } from './features/credit/CreditWorkflowContext'
 
 export default function App() {
   // selection key format example: 'calendar', 'demand', 'demand:excel-upload'
@@ -75,7 +81,9 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [expirySelectionCount, setExpirySelectionCount] = useState(0)
   const leftW = menuCollapsed ? 40 : 220
-  const rightW = Math.round(leftW * 2.5)
+  const baseRightW = Math.round(leftW * 2.5)
+  // credit:workflow 메뉴에서는 우측 패널을 1/3 더 넓게 설정
+  const rightW = (selectedKey === 'credit:workflow' || selectedKey === 'credit:unblocking') ? Math.round(baseRightW * 4 / 3) : baseRightW
   const mergeRight = selectedKey === 'sales-plan-new' || selectedKey === 'sales-plan-s' || selectedKey === 'sales-targets'
   const centerFallback = <div className="placeholder">화면을 불러오는 중…</div>
   const panelFallback = <div className="placeholder">패널을 불러오는 중…</div>
@@ -124,206 +132,220 @@ export default function App() {
 
   if (isMobile) {
     return (
-      <div className="app-root">
-        {/* Mobile top bar */}
-        <div className="pane-header" style={{ position: 'sticky', top: 0, zIndex: 20 }}>
-          <span
-            role="button"
-            tabIndex={0}
-            className="icon-button"
-            onClick={() => setMobileMenuOpen(true)}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMobileMenuOpen(true) } }}
-            title="메뉴 열기"
-            aria-label="메뉴 열기"
-            style={{ marginRight: 8 }}
-          >
-            <ChevronRight className="icon" size={20} />
-          </span>
-          <Building2 className="icon icon-lg" size={24} />
-          <div style={{ marginLeft: 'auto' }}>
-            <ThemeToggle />
-          </div>
-        </div>
-        {/* Center content full width */}
-        <div className="pane center" style={{ height: '100%', minHeight: 0 }}>
-          <Suspense fallback={centerFallback}>
-            <MainView selectedKey={selectedKey} />
-          </Suspense>
-        </div>
-        {/* Slide-over drawer for menu */}
-        {mobileMenuOpen && (
-          <div className="mobile-drawer" role="dialog" aria-modal="true">
-            <div className="mobile-drawer-backdrop" onClick={() => setMobileMenuOpen(false)} />
-            <div className="mobile-drawer-panel">
-              <div className="pane-header" style={{ justifyContent: 'space-between' }}>
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                  <Building2 className="icon icon-lg" size={24} />
-                  <strong>메뉴</strong>
-                </div>
-                <span
-                  role="button"
-                  tabIndex={0}
-                  className="icon-button"
-                  onClick={() => setMobileMenuOpen(false)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMobileMenuOpen(false) } }}
-                  title="닫기"
-                  aria-label="닫기"
-                >
-                  <ChevronLeft className="icon" size={20} />
-                </span>
-              </div>
-              <div style={{ padding: 8 }}>
-                <Menu
-                  selectedKey={selectedKey}
-                  onSelect={(k) => { setSelectedKey(k); setMobileMenuOpen(false) }}
-                />
-              </div>
+      <CreditWorkflowProvider>
+        <div className="app-root">
+          {/* Mobile top bar */}
+          <div className="pane-header" style={{ position: 'sticky', top: 0, zIndex: 20 }}>
+            <span
+              role="button"
+              tabIndex={0}
+              className="icon-button"
+              onClick={() => setMobileMenuOpen(true)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMobileMenuOpen(true) } }}
+              title="메뉴 열기"
+              aria-label="메뉴 열기"
+              style={{ marginRight: 8 }}
+            >
+              <ChevronRight className="icon" size={20} />
+            </span>
+            <Building2 className="icon icon-lg" size={24} />
+            <div style={{ marginLeft: 'auto' }}>
+              <ThemeToggle />
             </div>
           </div>
-        )}
-      </div>
+          {/* Center content full width */}
+          <div className="pane center" style={{ height: '100%', minHeight: 0 }}>
+            <Suspense fallback={centerFallback}>
+              <MainView selectedKey={selectedKey} />
+            </Suspense>
+          </div>
+          {/* Slide-over drawer for menu */}
+          {mobileMenuOpen && (
+            <div className="mobile-drawer" role="dialog" aria-modal="true">
+              <div className="mobile-drawer-backdrop" onClick={() => setMobileMenuOpen(false)} />
+              <div className="mobile-drawer-panel">
+                <div className="pane-header" style={{ justifyContent: 'space-between' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <Building2 className="icon icon-lg" size={24} />
+                    <strong>메뉴</strong>
+                  </div>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="icon-button"
+                    onClick={() => setMobileMenuOpen(false)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMobileMenuOpen(false) } }}
+                    title="닫기"
+                    aria-label="닫기"
+                  >
+                    <ChevronLeft className="icon" size={20} />
+                  </span>
+                </div>
+                <div style={{ padding: 8 }}>
+                  <Menu
+                    selectedKey={selectedKey}
+                    onSelect={(k) => { setSelectedKey(k); setMobileMenuOpen(false) }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </CreditWorkflowProvider>
     )
   }
 
   return (
-    <div className="app-root">
-      <ResizableColumns fixedLeft={leftW} initialLeft={leftW} initialRight={rightW} minLeft={leftW} minRight={220} fixedRight={mergeRight ? 0 : undefined}>
-        <div className="pane left">
-          <div className="pane-header" style={{ padding: menuCollapsed ? '0 4px' as any : undefined }}>
-            {!menuCollapsed && <Building2 className="icon icon-lg" size={24} />}
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
-              <span
-                role="button"
-                tabIndex={0}
-                className="icon-button"
-                onClick={() => setMenuCollapsed(!menuCollapsed)}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMenuCollapsed(!menuCollapsed) } }}
-                title={menuCollapsed ? '메뉴 펼치기' : '메뉴 숨기기'}
-                aria-label={menuCollapsed ? '메뉴 펼치기' : '메뉴 숨기기'}
-                style={menuCollapsed ? { width: 28, height: 28 } : undefined}
-              >
-                {menuCollapsed ? <ChevronRight className="icon" size={20} /> : <ChevronLeft className="icon" size={20} />}
-              </span>
-              {!menuCollapsed && <ThemeToggle />}
+    <CreditWorkflowProvider>
+      <div className="app-root">
+        <ResizableColumns fixedLeft={leftW} initialLeft={leftW} initialRight={rightW} minLeft={leftW} minRight={220} fixedRight={mergeRight ? 0 : undefined}>
+          <div className="pane left">
+            <div className="pane-header" style={{ padding: menuCollapsed ? '0 4px' as any : undefined }}>
+              {!menuCollapsed && <Building2 className="icon icon-lg" size={24} />}
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="icon-button"
+                  onClick={() => setMenuCollapsed(!menuCollapsed)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMenuCollapsed(!menuCollapsed) } }}
+                  title={menuCollapsed ? '메뉴 펼치기' : '메뉴 숨기기'}
+                  aria-label={menuCollapsed ? '메뉴 펼치기' : '메뉴 숨기기'}
+                  style={menuCollapsed ? { width: 28, height: 28 } : undefined}
+                >
+                  {menuCollapsed ? <ChevronRight className="icon" size={20} /> : <ChevronLeft className="icon" size={20} />}
+                </span>
+                {!menuCollapsed && <ThemeToggle />}
+              </div>
             </div>
+            {menuCollapsed ? (
+              <Menu collapsed selectedKey={selectedKey} onSelect={setSelectedKey} onExpand={() => setMenuCollapsed(false)} disabled={!loggedIn} />
+            ) : (
+              <Menu selectedKey={selectedKey} onSelect={setSelectedKey} disabled={!loggedIn} />
+            )}
           </div>
-          {menuCollapsed ? (
-            <Menu collapsed selectedKey={selectedKey} onSelect={setSelectedKey} onExpand={() => setMenuCollapsed(false)} disabled={!loggedIn} />
-          ) : (
-            <Menu selectedKey={selectedKey} onSelect={setSelectedKey} disabled={!loggedIn} />
-          )}
-        </div>
-        <div className="pane center">
-          <div className="pane-header" />
-          {loggedIn ? (
-            <Suspense fallback={centerFallback}>
-              {selectedKey === 'demand:list' ? (<DemandList />) :
-                selectedKey === 'lab:standard-ui' ? (<StandardUI />) :
-                  selectedKey === 'lab:standard-inquiry' ? (<StandardInquiry />) :
-                    selectedKey === 'lab:standard-ui-cd1' ? (<StandardUICD1 />) :
-                      selectedKey === 'lab:standard-ui-cd2' ? (<StandardUICD2 />) :
-                        selectedKey === 'lab:standard-ui-cd3' ? (<StandardUICD3 />) :
-                          selectedKey === 'lab:standard-nav1' ? (<StandardNavigation1 />) :
-                            selectedKey === 'lab:standard-nav2' ? (<StandardNavigation2 />) :
-                              selectedKey === 'lab:standard-nav3' ? (<StandardNavigation3 />) :
-                                selectedKey === 'lab:standard-c360' ? (<StandardC360 />) :
-                                  selectedKey === 'lab:standard-map' ? (<StandardMap />) :
-                                    selectedKey === 'lab:quote' ? (<QuotePage />) :
-                                      selectedKey === 'quote' ? (<QuoteList />) :
-                                        selectedKey === 'quote:new' ? (<QuoteForm />) :
-                                          (<MainView selectedKey={selectedKey} />)}
-            </Suspense>
-          ) : (
-            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
-              <img src={homeImgUrl} alt="home" style={{ maxWidth: '90%', maxHeight: '80%', objectFit: 'contain', borderRadius: 12, boxShadow: '0 10px 30px rgba(0,0,0,.15)' }} />
+          <div className="pane center">
+            <div className="pane-header" />
+            {loggedIn ? (
+              <Suspense fallback={centerFallback}>
+                {selectedKey === 'demand:list' ? (<DemandList />) :
+                  selectedKey === 'lab:standard-ui' ? (<StandardUI />) :
+                    selectedKey === 'lab:standard-inquiry' ? (<StandardInquiry />) :
+                      selectedKey === 'lab:standard-ui-cd1' ? (<StandardUICD1 />) :
+                        selectedKey === 'lab:standard-ui-cd2' ? (<StandardUICD2 />) :
+                          selectedKey === 'lab:standard-ui-cd3' ? (<StandardUICD3 />) :
+                            selectedKey === 'lab:standard-nav1' ? (<StandardNavigation1 />) :
+                              selectedKey === 'lab:standard-nav2' ? (<StandardNavigation2 />) :
+                                selectedKey === 'lab:standard-nav3' ? (<StandardNavigation3 />) :
+                                  selectedKey === 'lab:standard-c360' ? (<StandardC360 />) :
+                                    selectedKey === 'lab:standard-map' ? (<StandardMap />) :
+                                      selectedKey === 'lab:quote' ? (<QuotePage />) :
+                                        selectedKey === 'lab:ok-tnt' ? (<OkTnt />) :
+                                          selectedKey === 'quote' ? (<QuoteList />) :
+                                            selectedKey === 'quote:new' ? (<QuoteForm />) :
+                                              selectedKey === 'credit:unblocking' ? (<UnblockMainPage />) :
+                                                (<MainView selectedKey={selectedKey} />)}
+              </Suspense>
+            ) : (
+              <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
+                <img src={homeImgUrl} alt="home" style={{ maxWidth: '90%', maxHeight: '80%', objectFit: 'contain', borderRadius: 12, boxShadow: '0 10px 30px rgba(0,0,0,.15)' }} />
+              </div>
+            )}
+          </div>
+          <div className="pane right">
+            <div className="pane-header">
+              {selectedKey === 'sales-assign' ? '매출 조회' : ''}
             </div>
-          )}
-        </div>
-        <div className="pane right">
-          <div className="pane-header">
-            {selectedKey === 'sales-assign' ? '매출 조회' : ''}
+            {(!loggedIn) ? (
+              <div style={{ flex: 1, minHeight: 0 }} />
+            ) : mergeRight ? (
+              <div className="placeholder">합쳐진 레이아웃 사용 중</div>
+            ) : (
+              <Suspense fallback={panelFallback}>
+                {selectedKey === 'customer:my-activities' ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
+                    <div style={{ flex: 1, minHeight: 0 }}>
+                      <VisitPlanPanel />
+                    </div>
+                  </div>
+                ) : selectedKey === 'customer:list' ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
+                    <div style={{ height: '50%', minHeight: 0, overflow: 'hidden', borderBottom: '1px solid var(--border)' }}>
+                      <MyCustomerAnalysisPanel style={{ height: '100%', overflow: 'auto' }} />
+                    </div>
+                    <div style={{ flex: 1, minHeight: 0 }}>
+                      <MissingTransactionsPanel />
+                    </div>
+                  </div>
+                ) : selectedKey === 'lead:register' || selectedKey === 'lead' ? (
+                  <LeadRightPanel />
+                ) : selectedKey === 'lead:tm-status' ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                    <div style={{ flex: 1, minHeight: 0 }}>
+                      <TMMonthlyMatrixPanel />
+                    </div>
+                  </div>
+                ) : selectedKey === 'inquiry' ? (
+                  <InquiryRightPanel />
+                ) : selectedKey === 'order-sheet' ? (
+                  <OrderSheetRightPanel />
+                ) : selectedKey === 'customer:c360' ? (
+                  <CustomerC360RightPanel />
+                ) : selectedKey === 'sales-assign' ? (
+                  // 목표배정: 우측 패널에 총합계만 표시
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
+                    <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+                      <SalesAssignTotalsRightPanel />
+                    </div>
+                  </div>
+                ) : selectedKey === 'dashboard' ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
+                    <div style={{ flex: 1, minHeight: 0 }}>
+                      <ChurnRightPanel />
+                    </div>
+                  </div>
+                ) : selectedKey === 'sales-dashboard' ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
+                    <div style={{ flex: 1, minHeight: 0 }}>
+                      {/** Sales strategy panel wireframe for 목표Dashboard */}
+                      <SalesStrategyPanel />
+                    </div>
+                  </div>
+                ) : selectedKey === 'credit:unblocking' ? (
+                  <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                    <UnblockCreditRightPanel />
+                  </div>
+                ) : selectedKey === 'credit:workflow' ? (
+                  <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                    <CreditWorkflowRightPanel />
+                  </div>
+                ) : selectedKey.startsWith('demand') ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
+                    <div style={{ height: '50%', minHeight: 0 }}>
+                      <DemandTargetsPanel />
+                    </div>
+                    <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+                      <DemandOwnerStatsPanel />
+                    </div>
+                  </div>
+                ) : selectedKey === 'sales-mgmt:activities' ? (
+                  <SalesMgmtActivitiesRightPanel />
+                ) : selectedKey === 'inventory:expiry-ag' ? (
+                  <div className="fill">
+                    <PromotionPanel selectedItemsCount={expirySelectionCount} onApplyPromotion={handleApplyPromotion} />
+                  </div>
+                ) : selectedKey === 'lab:tnt-chat' ? (
+                  <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                    <TNTChatRightPanel />
+                  </div>
+                ) : (
+                  <div className="placeholder">향후 기능을 위해 예약된 영역</div>
+                )}
+              </Suspense>
+            )}
           </div>
-          {(!loggedIn) ? (
-            <div style={{ flex: 1, minHeight: 0 }} />
-          ) : mergeRight ? (
-            <div className="placeholder">합쳐진 레이아웃 사용 중</div>
-          ) : (
-            <Suspense fallback={panelFallback}>
-              {selectedKey === 'customer:my-activities' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
-                  <div style={{ flex: 1, minHeight: 0 }}>
-                    <VisitPlanPanel />
-                  </div>
-                </div>
-              ) : selectedKey === 'customer:list' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
-                  <div style={{ height: '50%', minHeight: 0, overflow: 'hidden', borderBottom: '1px solid var(--border)' }}>
-                    <MyCustomerAnalysisPanel style={{ height: '100%', overflow: 'auto' }} />
-                  </div>
-                  <div style={{ flex: 1, minHeight: 0 }}>
-                    <MissingTransactionsPanel />
-                  </div>
-                </div>
-              ) : selectedKey === 'lead:register' || selectedKey === 'lead' ? (
-                <LeadRightPanel />
-              ) : selectedKey === 'lead:tm-status' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-                  <div style={{ flex: 1, minHeight: 0 }}>
-                    <TMMonthlyMatrixPanel />
-                  </div>
-                </div>
-              ) : selectedKey === 'inquiry' ? (
-                <InquiryRightPanel />
-              ) : selectedKey === 'order-sheet' ? (
-                <OrderSheetRightPanel />
-              ) : selectedKey === 'customer:c360' ? (
-                <CustomerC360RightPanel />
-              ) : selectedKey === 'sales-assign' ? (
-                // 목표배정: 우측 패널에 총합계만 표시
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
-                  <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-                    <SalesAssignTotalsRightPanel />
-                  </div>
-                </div>
-              ) : selectedKey === 'dashboard' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
-                  <div style={{ flex: 1, minHeight: 0 }}>
-                    <ChurnRightPanel />
-                  </div>
-                </div>
-              ) : selectedKey === 'sales-dashboard' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
-                  <div style={{ flex: 1, minHeight: 0 }}>
-                    {/** Sales strategy panel wireframe for 목표Dashboard */}
-                    <SalesStrategyPanel />
-                  </div>
-                </div>
-              ) : selectedKey.startsWith('demand') ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
-                  <div style={{ height: '50%', minHeight: 0 }}>
-                    <DemandTargetsPanel />
-                  </div>
-                  <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-                    <DemandOwnerStatsPanel />
-                  </div>
-                </div>
-              ) : selectedKey === 'sales-mgmt:activities' ? (
-                <SalesMgmtActivitiesRightPanel />
-              ) : selectedKey === 'inventory:expiry-ag' ? (
-                <div className="fill">
-                  <PromotionPanel selectedItemsCount={expirySelectionCount} onApplyPromotion={handleApplyPromotion} />
-                </div>
-              ) : selectedKey === 'lab:tnt-chat' ? (
-                <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-                  <TNTChatRightPanel />
-                </div>
-              ) : (
-                <div className="placeholder">향후 기능을 위해 예약된 영역</div>
-              )}
-            </Suspense>
-          )}
-        </div>
-      </ResizableColumns>
-    </div>
+        </ResizableColumns>
+      </div>
+    </CreditWorkflowProvider>
   )
 }

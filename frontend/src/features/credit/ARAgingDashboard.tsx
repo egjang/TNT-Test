@@ -22,7 +22,7 @@ export function ARAgingDashboard() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [salesRepList, setSalesRepList] = useState<string[]>([])
-  const [snapshotDates, setSnapshotDates] = useState<string[]>([])
+  const [snapshotOptions, setSnapshotOptions] = useState<any[]>([])
 
   // Filter states
   const [company, setCompany] = useState<string>('all')
@@ -30,7 +30,7 @@ export function ARAgingDashboard() {
   const [customerName, setCustomerName] = useState<string>('')
   const [riskLevel, setRiskLevel] = useState<string>('all')
   const [agingBucket, setAgingBucket] = useState<string>('all')
-  const [snapshotDate, setSnapshotDate] = useState<string>('latest')
+  const [snapshotValue, setSnapshotValue] = useState<string>('latest') // format: "meetingId:snapshotDate" or "latest"
 
   // Summary statistics
   const [summary, setSummary] = useState({
@@ -53,12 +53,12 @@ export function ARAgingDashboard() {
     }
   }
 
-  const fetchSnapshotDates = async () => {
+  const fetchSnapshotOptions = async () => {
     try {
-      const res = await fetch('/api/v1/credit/snapshot-dates')
+      const res = await fetch('/api/v1/credit/snapshot-options')
       if (!res.ok) throw new Error(`API 호출 실패: ${res.status}`)
       const data = await res.json()
-      setSnapshotDates(data.dates || [])
+      setSnapshotOptions(data.options || [])
     } catch (err: any) {
       console.error('채권검토일 목록 조회 실패:', err)
     }
@@ -74,7 +74,14 @@ export function ARAgingDashboard() {
       if (customerName) params.append('customerName', customerName)
       if (riskLevel !== 'all') params.append('riskLevel', riskLevel)
       if (agingBucket !== 'all') params.append('agingBucket', agingBucket)
-      if (snapshotDate !== 'latest') params.append('snapshotDate', snapshotDate)
+
+      if (snapshotValue !== 'latest') {
+        const [mId, sDate] = snapshotValue.split(':')
+        if (mId && mId !== 'null' && mId !== 'undefined') params.append('meetingId', mId)
+        if (sDate) params.append('snapshotDate', sDate)
+      } else {
+        params.append('snapshotDate', 'latest')
+      }
 
       console.log('AR Aging 조회 요청:', params.toString())
 
@@ -135,7 +142,7 @@ export function ARAgingDashboard() {
 
   useEffect(() => {
     fetchSalesReps()
-    fetchSnapshotDates()
+    fetchSnapshotOptions()
     fetchARData()
   }, [])
 
@@ -245,10 +252,12 @@ export function ARAgingDashboard() {
 
         {/* Controls Row */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', marginBottom: 20 }}>
-          <select className="search-input" value={snapshotDate} onChange={(e) => setSnapshotDate(e.target.value)} style={{ width: 150 }}>
+          <select className="search-input" value={snapshotValue} onChange={(e) => setSnapshotValue(e.target.value)} style={{ width: 220 }}>
             <option value="latest">최신 채권검토일</option>
-            {snapshotDates.map((date) => (
-              <option key={date} value={date}>{date}</option>
+            {snapshotOptions.map((opt, idx) => (
+              <option key={idx} value={`${opt.meeting_id}:${opt.snapshot_date}`}>
+                {opt.meeting_name} ({opt.snapshot_date})
+              </option>
             ))}
           </select>
           <select className="search-input" value={company} onChange={(e) => setCompany(e.target.value)} style={{ width: 120 }}>

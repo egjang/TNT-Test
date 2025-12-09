@@ -12,7 +12,8 @@ import javax.sql.DataSource;
 
 @Configuration
 @MapperScan(basePackages = { "com.tnt.sales.competitor.mapper",
-        "com.tnt.sales.quote.mapper" }, sqlSessionFactoryRef = "sqlSessionFactory")
+        "com.tnt.sales.quote.mapper",
+        "com.tnt.sales.okr.mapper" }, sqlSessionFactoryRef = "sqlSessionFactory")
 public class MyBatisConfig {
 
     @Bean(name = "sqlSessionFactory")
@@ -21,7 +22,7 @@ public class MyBatisConfig {
         sessionFactory.setDataSource(dataSource);
         sessionFactory.setMapperLocations(
                 new PathMatchingResourcePatternResolver().getResources("classpath:mapper/**/*.xml"));
-        sessionFactory.setTypeAliasesPackage("com.tnt.sales.competitor.model");
+        sessionFactory.setTypeAliasesPackage("com.tnt.sales.competitor.model,com.tnt.sales.okr.model");
 
         // Enable camelCase mapping
         org.apache.ibatis.session.Configuration configuration = new org.apache.ibatis.session.Configuration();
