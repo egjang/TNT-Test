@@ -115,3 +115,24 @@ CreditService.java (2,365줄)
 - 컴포넌트 파일은 **500줄 이하** 유지
 - 공통 로직은 `hooks/` 또는 `utils/`로 분리
 - 타입 정의는 `types/` 디렉토리에 별도 관리
+
+## Git 저장소 설정
+
+### 업로드 대상 저장소 (3개)
+git 업로드 요청 시 아래 3개 저장소에 모두 push한다:
+
+| Remote | Repository | 용도 |
+|--------|------------|------|
+| **origin** | `git@github.com:egjang/TNT-Test.git` | 개인 테스트 저장소 |
+| **tnt-biz** | `git@github.com:TNT-Biz-admin/egjang.git` | TNT-Biz 개인 저장소 |
+| **biz-platform** | `git@github.com:TNT-Biz-admin/biz-platform.git` | TNT-Biz 플랫폼 저장소 |
+
+### 업로드 명령어
+```bash
+# tnt_sales 디렉토리에서 실행
+git -C /home/egjang/vibe-lab/tnt_sales add .
+git -C /home/egjang/vibe-lab/tnt_sales commit -m "커밋 메시지"
+git -C /home/egjang/vibe-lab/tnt_sales push origin master
+git -C /home/egjang/vibe-lab/tnt_sales push tnt-biz master
+git -C /home/egjang/vibe-lab/tnt_sales push biz-platform master
+```

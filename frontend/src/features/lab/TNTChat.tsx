@@ -346,13 +346,15 @@ export function TNTChat() {
                       ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
                       : '#fff',
                     color: '#1e293b',
-                    whiteSpace: 'pre-wrap',
                     boxShadow: msg.role === 'user'
                       ? 'inset 0 0 0 1px #e2e8f0'
                       : '0 2px 12px rgba(0,0,0,0.06), inset 0 0 0 1px rgba(59,130,246,0.1)',
                     position: 'relative'
-                  }}>
-                    {msg.content}
+                  }}
+                    className={msg.role === 'assistant' ? 'assistant-message' : ''}
+                    dangerouslySetInnerHTML={msg.role === 'assistant' ? { __html: msg.content } : undefined}
+                  >
+                    {msg.role === 'user' ? msg.content : null}
                   </div>
                   {/* Citations - Modern Style */}
                   {msg.role === 'assistant' && msg.citations && msg.citations.length > 0 && (
@@ -461,19 +463,11 @@ export function TNTChat() {
                     fontSize: 14, lineHeight: 1.8,
                     background: '#fff',
                     color: '#1e293b',
-                    whiteSpace: 'pre-wrap',
                     boxShadow: '0 2px 12px rgba(0,0,0,0.06), inset 0 0 0 1px rgba(59,130,246,0.1)'
-                  }}>
-                    {streamingContent}
-                    <span style={{
-                      display: 'inline-block',
-                      width: 8, height: 18,
-                      background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
-                      borderRadius: 2,
-                      marginLeft: 2,
-                      animation: 'blink 1s infinite'
-                    }} />
-                  </div>
+                  }}
+                    className="assistant-message"
+                    dangerouslySetInnerHTML={{ __html: streamingContent + '<span class="typing-cursor"></span>' }}
+                  />
                 </div>
               </div>
             )}
@@ -607,6 +601,105 @@ export function TNTChat() {
         }
         textarea::placeholder { color: #94a3b8; }
         textarea:focus { outline: none; }
+
+        /* Assistant message HTML styles */
+        .assistant-message table {
+          width: 100%;
+          border-collapse: collapse;
+          margin: 12px 0;
+          font-size: 13px;
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .assistant-message th {
+          background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+          color: white;
+          font-weight: 600;
+          padding: 10px 12px;
+          text-align: left;
+          border: none;
+        }
+        .assistant-message td {
+          padding: 10px 12px;
+          border-bottom: 1px solid #e2e8f0;
+          background: #fff;
+        }
+        .assistant-message tr:last-child td {
+          border-bottom: none;
+        }
+        .assistant-message tr:hover td {
+          background: #f8fafc;
+        }
+        .assistant-message ul, .assistant-message ol {
+          margin: 8px 0;
+          padding-left: 20px;
+        }
+        .assistant-message li {
+          margin: 6px 0;
+          line-height: 1.6;
+        }
+        .assistant-message strong, .assistant-message b {
+          color: #1e40af;
+          font-weight: 600;
+        }
+        .assistant-message h3, .assistant-message h4 {
+          margin: 16px 0 8px;
+          color: #1e293b;
+          font-weight: 700;
+        }
+        .assistant-message h3 { font-size: 16px; }
+        .assistant-message h4 { font-size: 14px; }
+        .assistant-message code {
+          background: #f1f5f9;
+          padding: 2px 6px;
+          border-radius: 4px;
+          font-family: 'Monaco', 'Menlo', monospace;
+          font-size: 12px;
+          color: #e11d48;
+        }
+        .assistant-message pre {
+          background: #1e293b;
+          color: #e2e8f0;
+          padding: 12px 16px;
+          border-radius: 8px;
+          overflow-x: auto;
+          margin: 12px 0;
+        }
+        .assistant-message pre code {
+          background: none;
+          color: inherit;
+          padding: 0;
+        }
+        .assistant-message blockquote {
+          border-left: 4px solid #3b82f6;
+          margin: 12px 0;
+          padding: 8px 16px;
+          background: #eff6ff;
+          border-radius: 0 8px 8px 0;
+          color: #1e40af;
+        }
+        .assistant-message p {
+          margin: 8px 0;
+          line-height: 1.7;
+        }
+        .assistant-message a {
+          color: #3b82f6;
+          text-decoration: none;
+        }
+        .assistant-message a:hover {
+          text-decoration: underline;
+        }
+        .typing-cursor {
+          display: inline-block;
+          width: 8px;
+          height: 18px;
+          background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+          border-radius: 2px;
+          margin-left: 2px;
+          animation: blink 1s infinite;
+          vertical-align: text-bottom;
+        }
       `}</style>
     </div>
   )

@@ -211,6 +211,7 @@ type ARAgingItem = {
   customerSeq?: number
   customerCode?: string
   customerName?: string
+  channelName?: string
   companyType?: string
   salesRep?: string
   department?: string
@@ -657,11 +658,10 @@ function MeetingProgressView({ activeMeeting }: { activeMeeting: Meeting }) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
   const [summary, setSummary] = useState({
     totalAr: 0,
-    overdueAr: 0,
-    overdueCount: 0,
-    aging30Ar: 0,
-    aging30Count: 0,
-    normalAr: 0,
+    aging30Ar: 0,      // 30일 이내 (0~30일)
+    aging60Ar: 0,      // 60일 이내 (31~60일)
+    aging90Ar: 0,      // 90일 이내 (61~90일)
+    over90Ar: 0,       // 90일 초과
   })
 
   // 컨텍스트 메뉴 상태
@@ -904,6 +904,7 @@ function MeetingProgressView({ activeMeeting }: { activeMeeting: Meeting }) {
         customerSeq: item.customer_seq,
         customerCode: item.customer_no,
         customerName: item.customer_name,
+        channelName: item.channel_name,
         companyType: item.company_type,
         salesRep: item.emp_name,
         department: item.dept_name,
@@ -926,16 +927,25 @@ function MeetingProgressView({ activeMeeting }: { activeMeeting: Meeting }) {
       }))
       setItems(items)
 
-      const highRisk = items.filter((it: ARAgingItem) => it.riskLevel === 'high')
-      const lowRisk = items.filter((it: ARAgingItem) => it.riskLevel === 'low')
+      // 30일 이내 (0~30일): aging_0_30
+      const aging30 = items.reduce((sum: number, it: ARAgingItem) => sum + (it.aging030 || 0), 0)
+      // 60일 이내 (31~60일): aging_31_60
+      const aging60 = items.reduce((sum: number, it: ARAgingItem) => sum + (it.aging3160 || 0), 0)
+      // 90일 이내 (61~90일): aging_61_90
+      const aging90 = items.reduce((sum: number, it: ARAgingItem) => sum + (it.aging6190 || 0), 0)
+      // 90일 초과: 91일 이상 모든 구간 합계
+      const over90 = items.reduce((sum: number, it: ARAgingItem) =>
+        sum + (it.aging91120 || 0) + (it.aging121150 || 0) +
+        (it.aging151180 || 0) + (it.aging181210 || 0) + (it.aging211240 || 0) +
+        (it.aging241270 || 0) + (it.aging271300 || 0) + (it.aging301330 || 0) +
+        (it.aging331365 || 0) + (it.agingOver365 || 0), 0)
 
       setSummary({
         totalAr: items.reduce((sum: number, it: ARAgingItem) => sum + (it.totalAr || 0), 0),
-        overdueAr: items.reduce((sum: number, it: ARAgingItem) => sum + (it.overdue || 0), 0),
-        overdueCount: highRisk.length,
-        aging30Ar: items.reduce((sum: number, it: ARAgingItem) => sum + (it.aging030 || 0), 0),
-        aging30Count: lowRisk.length,
-        normalAr: items.reduce((sum: number, it: ARAgingItem) => sum + (it.aging030 || 0), 0),
+        aging30Ar: aging30,       // 30일 이내 (0~30일)
+        aging60Ar: aging60,       // 60일 이내 (31~60일)
+        aging90Ar: aging90,       // 90일 이내 (61~90일)
+        over90Ar: over90,         // 90일 초과
       })
     } catch (err) {
       console.error('AR Aging 조회 실패:', err)
@@ -1016,6 +1026,32 @@ function MeetingProgressView({ activeMeeting }: { activeMeeting: Meeting }) {
       return <span style={{ ...baseStyle, background: '#10b981' }}>저</span>
     }
     return <span style={{ ...baseStyle, background: '#6b7280' }}>-</span>
+  }
+
+  // 등급별 색상 (배지 스타일)
+  const getGradeBadge = (grade: string | undefined) => {
+    const gradeColors: Record<string, { bg: string; text: string }> = {
+      'A등급': { bg: '#dcfce7', text: '#16a34a' },
+      'B등급': { bg: '#dbeafe', text: '#2563eb' },
+      'C등급': { bg: '#fef9c3', text: '#ca8a04' },
+      'D등급': { bg: '#fed7aa', text: '#ea580c' },
+      'E등급': { bg: '#fecaca', text: '#dc2626' },
+      'F등급': { bg: '#f3e8ff', text: '#9333ea' },
+    }
+    const style = gradeColors[grade || ''] || { bg: '#f3f4f6', text: '#6b7280' }
+    return (
+      <span style={{
+        display: 'inline-block',
+        padding: '2px 6px',
+        borderRadius: 4,
+        fontSize: 10,
+        fontWeight: 700,
+        background: style.bg,
+        color: style.text,
+      }}>
+        {grade || '-'}
+      </span>
+    )
   }
 
   return (
@@ -1137,22 +1173,26 @@ function MeetingProgressView({ activeMeeting }: { activeMeeting: Meeting }) {
           </div>
 
           {/* 요약 카드 */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
             <div style={{ padding: 10, background: '#f8fafc', borderRadius: 6, borderLeft: '3px solid #3b82f6' }}>
               <div style={{ fontSize: 11, color: '#6b7280' }}>총채권액</div>
               <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>{formatCurrency(summary.totalAr)}</div>
             </div>
-            <div style={{ padding: 10, background: '#fef2f2', borderRadius: 6, borderLeft: '3px solid #ef4444' }}>
-              <div style={{ fontSize: 11, color: '#6b7280' }}>만기도과 ({summary.overdueCount}건)</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: '#ef4444' }}>{formatCurrency(summary.overdueAr)}</div>
+            <div style={{ padding: 10, background: '#ecfdf5', borderRadius: 6, borderLeft: '3px solid #10b981' }}>
+              <div style={{ fontSize: 11, color: '#6b7280' }}>30일 이내 (0~30일)</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#10b981' }}>{formatCurrency(summary.aging30Ar)}</div>
+            </div>
+            <div style={{ padding: 10, background: '#eff6ff', borderRadius: 6, borderLeft: '3px solid #3b82f6' }}>
+              <div style={{ fontSize: 11, color: '#6b7280' }}>60일 이내 (31~60일)</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#3b82f6' }}>{formatCurrency(summary.aging60Ar)}</div>
             </div>
             <div style={{ padding: 10, background: '#fffbeb', borderRadius: 6, borderLeft: '3px solid #f59e0b' }}>
-              <div style={{ fontSize: 11, color: '#6b7280' }}>30일 이내 ({summary.aging30Count}건)</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: '#f59e0b' }}>{formatCurrency(summary.aging30Ar)}</div>
+              <div style={{ fontSize: 11, color: '#6b7280' }}>90일 이내 (61~90일)</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#f59e0b' }}>{formatCurrency(summary.aging90Ar)}</div>
             </div>
-            <div style={{ padding: 10, background: '#ecfdf5', borderRadius: 6, borderLeft: '3px solid #10b981' }}>
-              <div style={{ fontSize: 11, color: '#6b7280' }}>정상채권</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: '#10b981' }}>{formatCurrency(summary.normalAr)}</div>
+            <div style={{ padding: 10, background: '#fef2f2', borderRadius: 6, borderLeft: '3px solid #ef4444' }}>
+              <div style={{ fontSize: 11, color: '#6b7280' }}>90일 초과</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#ef4444' }}>{formatCurrency(summary.over90Ar)}</div>
             </div>
           </div>
         </div>
@@ -1181,6 +1221,7 @@ function MeetingProgressView({ activeMeeting }: { activeMeeting: Meeting }) {
                   <th rowSpan={2} style={{ padding: '8px 6px', textAlign: 'center', borderBottom: '1px solid #e5e7eb', fontWeight: 600, color: '#374151', position: 'sticky', top: 0, background: '#f9fafb', zIndex: 10, width: 30 }}>#</th>
                   <th rowSpan={2} style={{ padding: '8px 6px', textAlign: 'center', borderBottom: '1px solid #e5e7eb', fontWeight: 600, color: '#374151', position: 'sticky', top: 0, background: '#f9fafb', zIndex: 10, width: 50 }}>위험</th>
                   <th rowSpan={2} style={{ padding: '8px 6px', textAlign: 'left', borderBottom: '1px solid #e5e7eb', fontWeight: 600, color: '#374151', position: 'sticky', top: 0, background: '#f9fafb', zIndex: 10, minWidth: 180 }}>거래처</th>
+                  <th rowSpan={2} style={{ padding: '8px 6px', textAlign: 'center', borderBottom: '1px solid #e5e7eb', fontWeight: 600, color: '#374151', position: 'sticky', top: 0, background: '#f9fafb', zIndex: 10, width: 60 }}>등급</th>
                   <th rowSpan={2} style={{ padding: '8px 6px', textAlign: 'right', borderBottom: '1px solid #e5e7eb', fontWeight: 600, color: '#374151', position: 'sticky', top: 0, background: '#f9fafb', zIndex: 10, width: 90 }}>총채권</th>
                   <th rowSpan={2} style={{ padding: '8px 6px', textAlign: 'center', borderBottom: '1px solid #e5e7eb', fontWeight: 600, color: '#ef4444', position: 'sticky', top: 0, background: '#f9fafb', zIndex: 10, width: 70 }}>최고령</th>
                   <th style={{ padding: '4px 4px', textAlign: 'right', borderBottom: '1px solid #e5e7eb', fontWeight: 500, color: '#6b7280', fontSize: 10, position: 'sticky', top: 0, background: '#f9fafb', zIndex: 10, borderLeft: '1px solid #e5e7eb' }}>1개월미만</th>
@@ -1267,6 +1308,7 @@ function MeetingProgressView({ activeMeeting }: { activeMeeting: Meeting }) {
                       </div>
                       <div style={{ fontSize: 10, color: '#6b7280' }}>{item.salesRep || '-'} · {item.department || '-'}</div>
                     </td>
+                    <td rowSpan={2} style={{ padding: '6px', textAlign: 'center', borderBottom: '1px solid #f3f4f6' }}>{getGradeBadge(item.channelName)}</td>
                     <td rowSpan={2} style={{ padding: '6px', textAlign: 'right', fontWeight: 600, borderBottom: '1px solid #f3f4f6' }}>{formatCurrency(item.totalAr)}</td>
                     <td rowSpan={2} style={{ padding: '6px', textAlign: 'center', fontWeight: 600, fontSize: 10, color: isOverdue ? '#ef4444' : '#6b7280', borderBottom: '1px solid #f3f4f6' }}>{oldestAging}</td>
                     <td style={{ padding: '4px 6px', textAlign: 'right', borderLeft: '1px solid #f3f4f6', fontSize: 10 }}>{formatCurrency(item.aging030)}</td>
@@ -3718,25 +3760,35 @@ export function CreditMeetingWorkflow() {
                       </div>
                     </div>
 
-                    {/* 채널별 현황 */}
+                    {/* 등급별 현황 */}
                     {arSummary.byChannel && arSummary.byChannel.length > 0 && (
                       <div>
                         <h4 style={{ fontSize: 14, fontWeight: 700, color: '#374151', marginBottom: 12 }}>
-                          채널별 현황
+                          등급별 현황
                         </h4>
                         <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                             <thead>
                               <tr style={{ background: '#f9fafb' }}>
-                                <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, color: '#374151' }}>채널</th>
+                                <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, color: '#374151' }}>등급</th>
                                 <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: '#374151' }}>거래처 수</th>
                                 <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: '#374151' }}>채권액</th>
                               </tr>
                             </thead>
                             <tbody>
-                              {arSummary.byChannel.map((ch, idx) => (
+                              {[...arSummary.byChannel]
+                                .sort((a, b) => {
+                                  // 빈 등급(null, undefined, '기타')은 맨 아래로
+                                  const aEmpty = !a.channelName || a.channelName === '기타'
+                                  const bEmpty = !b.channelName || b.channelName === '기타'
+                                  if (aEmpty && !bEmpty) return 1
+                                  if (!aEmpty && bEmpty) return -1
+                                  // 나머지는 알파벳 순
+                                  return (a.channelName || '').localeCompare(b.channelName || '')
+                                })
+                                .map((ch, idx) => (
                                 <tr key={idx} style={{ borderTop: '1px solid #e5e7eb' }}>
-                                  <td style={{ padding: '10px 12px', color: '#111827' }}>{ch.channelName}</td>
+                                  <td style={{ padding: '10px 12px', color: '#111827' }}>{ch.channelName || '-'}</td>
                                   <td style={{ padding: '10px 12px', textAlign: 'right', color: '#6b7280' }}>
                                     {ch.count.toLocaleString()}
                                   </td>

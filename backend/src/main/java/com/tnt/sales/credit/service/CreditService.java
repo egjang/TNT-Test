@@ -122,7 +122,7 @@ public class CreditService {
         StringBuilder sql = new StringBuilder();
 
         sql.append("SELECT ");
-        sql.append("  customer_seq, customer_no, customer_name, ");
+        sql.append("  customer_seq, customer_no, customer_name, channel_name, ");
         sql.append("  company_type, ");
         sql.append("  dept_name, assignee_id, emp_name, ");
         sql.append("  total_ar, ");
@@ -864,10 +864,10 @@ public class CreditService {
             BigDecimal overdueOver90 = pgJdbc.queryForObject(overdueOver90Sql, BigDecimal.class, meetingId);
             summary.put("overdueOver90", overdueOver90 != null ? overdueOver90 : BigDecimal.ZERO);
 
-            // Get by channel summary
+            // Get by grade summary (등급별 현황)
             String channelSql = "SELECT channel_name, COUNT(*) as count, COALESCE(SUM(total_ar), 0) as amount " +
                     "FROM public.credit_ar_aging WHERE meeting_id = ? " +
-                    "GROUP BY channel_name ORDER BY amount DESC";
+                    "GROUP BY channel_name ORDER BY channel_name ASC NULLS LAST";
             List<Map<String, Object>> byChannel = pgJdbc.queryForList(channelSql, meetingId);
 
             List<Map<String, Object>> channelSummary = new ArrayList<>();
@@ -1061,7 +1061,7 @@ public class CreditService {
                 row.put("CustSeq", "");
                 row.put("EmpSeq", "");
                 row.put("SMQryType", "");
-                row.put("IncludeMiNote", "");
+                row.put("IncludeMiNote", "1");
                 row.put("PAGE_NO", String.valueOf(pageNo));
                 row.put("PAGE_SIZE", String.valueOf(PAGE_SIZE));
                 dataBlock1.add(row);
@@ -2325,12 +2325,13 @@ public class CreditService {
                         (meeting_id, approver_role, approver_assignee_id, decision_result, decision_comment, decided_at, created_by, created_at)
                         VALUES (?, ?, ?, ?, ?, NOW(), ?, NOW())
                         """;
-                pgJdbc.update(insertSql, meetingId, role, approverAssigneeId, decisionResult, comment, approverAssigneeId);
+                pgJdbc.update(insertSql, meetingId, role, approverAssigneeId, decisionResult, comment,
+                        approverAssigneeId);
 
                 // ID 조회
                 approvalId = pgJdbc.queryForObject(
-                    "SELECT id FROM public.credit_unblock_approval WHERE meeting_id = ?",
-                    Long.class, meetingId);
+                        "SELECT id FROM public.credit_unblock_approval WHERE meeting_id = ?",
+                        Long.class, meetingId);
             }
 
             // 2. credit_unblock_request 상태 업데이트
@@ -2344,7 +2345,8 @@ public class CreditService {
                         try {
                             String updateSql = "UPDATE public.credit_unblock_request SET request_status = 'APPROVED_1ST', updated_at = NOW(), updated_by = ? WHERE id = ?";
                             int updated = pgJdbc.update(updateSql, approverAssigneeId, requestId);
-                            if (updated > 0) approvedCount++;
+                            if (updated > 0)
+                                approvedCount++;
                         } catch (Exception e) {
                             log.warn("Failed to approve request {}: {}", requestId, e.getMessage());
                         }
@@ -2357,7 +2359,8 @@ public class CreditService {
                         try {
                             String updateSql = "UPDATE public.credit_unblock_request SET request_status = 'REJECTED', updated_at = NOW(), updated_by = ? WHERE id = ?";
                             int updated = pgJdbc.update(updateSql, approverAssigneeId, requestId);
-                            if (updated > 0) rejectedCount++;
+                            if (updated > 0)
+                                rejectedCount++;
                         } catch (Exception e) {
                             log.warn("Failed to reject request {}: {}", requestId, e.getMessage());
                         }
@@ -2371,7 +2374,8 @@ public class CreditService {
                         WHERE meeting_id = ? AND request_status = 'APPROVED_1ST'
                         """;
                 approvedCount = pgJdbc.update(finalApprovalSql, approverAssigneeId, meetingId);
-                log.info("2nd approver approved: {} requests changed to APPROVED_FINAL for meetingId={}", approvedCount, meetingId);
+                log.info("2nd approver approved: {} requests changed to APPROVED_FINAL for meetingId={}", approvedCount,
+                        meetingId);
             }
             // 2차 승인자 반려: credit_unblock_request 변경 없음
 

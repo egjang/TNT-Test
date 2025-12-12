@@ -26,6 +26,14 @@ public class OrdersController {
     @Autowired(required = false) JdbcTemplate jdbc; // primary (Postgres)
     @Autowired(required = false) SlackService slackService;
 
+    @Autowired(required = false)
+    @org.springframework.beans.factory.annotation.Qualifier("mssqlJdbcTemplate")
+    JdbcTemplate mssqlJdbc; // TNT ERP DB
+
+    @Autowired(required = false)
+    @org.springframework.beans.factory.annotation.Qualifier("mssqlDysJdbcTemplate")
+    JdbcTemplate mssqlDysJdbc; // DYS ERP DB
+
     public static class OrderItemReq {
         public String itemSeq;
         public String itemName;
@@ -374,6 +382,332 @@ public class OrdersController {
         } catch (Exception e) {
             // Fallback: timestamp-based unique key
             return "A" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+        }
+    }
+
+    /**
+     * GET /api/v1/orders/sales-control/check
+     * 매출통제 여부 확인 API
+     * 1. ERP API(tnt_SWAPISLSalesBondAnalRemainderInfo) 호출하여 Term 필드들 확인
+     * 2. Term90~Over365 중 하나라도 값이 있으면 매출통제 대상
+     * 3. ERP _TDACustUserDefine 테이블에서 mngserl=108720008 조회하여 해제 여부 확인
+     *
+     * @param customerSeq 거래처 시퀀스
+     * @param companyType 회사 타입 (TNT or DYS)
+     * @return 매출통제 상태 정보
+     */
+    @GetMapping("/sales-control/check")
+    public ResponseEntity<Map<String, Object>> checkSalesControl(
+            @RequestParam Long customerSeq,
+            @RequestParam(defaultValue = "TNT") String companyType) {
+        log.info("GET /api/v1/orders/sales-control/check - customerSeq: {}, companyType: {}", customerSeq, companyType);
+
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            // 1. ERP API 호출하여 매출통제 여부 확인 (Term 필드들 체크)
+            Map<String, Object> erpResult = callErpSalesControlApi(customerSeq, companyType);
+
+            boolean isSalesControlled = false;
+            String salesControlReason = null;
+            List<String> termFieldsWithValue = new ArrayList<>();
+
+            // Term 필드 목록
+            String[] termFields = {"Term90", "Term120", "Term150", "Term180", "Term210",
+                                   "Term240", "Term270", "Term300", "Term330", "Term365", "Over365"};
+
+            if (erpResult != null && erpResult.containsKey("items")) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> items = (List<Map<String, Object>>) erpResult.get("items");
+                if (items != null && !items.isEmpty()) {
+                    Map<String, Object> firstItem = items.get(0);
+
+                    // Term 필드들 확인 - 하나라도 값이 있으면 매출통제
+                    for (String termField : termFields) {
+                        Object termValue = firstItem.get(termField);
+                        if (termValue != null) {
+                            String strValue = String.valueOf(termValue).trim();
+                            // 숫자 값이 0이 아니면 매출통제
+                            if (!strValue.isEmpty() && !"null".equals(strValue) && !"0".equals(strValue) && !"0.0".equals(strValue)) {
+                                try {
+                                    double numValue = Double.parseDouble(strValue);
+                                    if (numValue != 0) {
+                                        isSalesControlled = true;
+                                        // 금액을 읽기 쉬운 형식으로 포맷팅 (예: 55,256,104원)
+                                        String formattedAmount = formatCurrency(numValue);
+                                        // Term 필드를 한국어로 변환 (예: Term300 → 10개월)
+                                        String koreanTerm = convertTermFieldToKorean(termField);
+                                        termFieldsWithValue.add(koreanTerm + "=" + formattedAmount);
+                                    }
+                                } catch (NumberFormatException e) {
+                                    // 숫자가 아닌 문자열 값이 있는 경우도 매출통제
+                                    isSalesControlled = true;
+                                    String koreanTerm = convertTermFieldToKorean(termField);
+                                    termFieldsWithValue.add(koreanTerm + "=" + strValue);
+                                }
+                            }
+                        }
+                    }
+
+                    if (isSalesControlled) {
+                        salesControlReason = "장기미수 존재 (" + String.join(", ", termFieldsWithValue) + ")";
+                    }
+                }
+            }
+
+            // 2. ERP _TDACustUserDefine 테이블에서 해제 여부 확인 (mngserl=108720008)
+            String unblockUntilDate = null;
+            boolean isUnblocked = false;
+            String expiredUnblockInfo = null;  // 만료된 해제 정보
+
+            if (isSalesControlled) {
+                // 매출통제 대상인 경우에만 해제 여부 확인 (ERP DB 직접 조회)
+                Map<String, Object> unblockResult = queryErpUnblockDate(customerSeq, companyType);
+                if (unblockResult != null && unblockResult.containsKey("MngValText")) {
+                    String mngValText = (String) unblockResult.get("MngValText");
+                    if (mngValText != null && !mngValText.trim().isEmpty()) {
+                        try {
+                            // MngValText가 날짜 형식인지 확인하고 현재일과 비교
+                            LocalDate unblockDate = parseUnblockDate(mngValText);
+                            if (unblockDate != null) {
+                                String formattedDate = unblockDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+                                if (!unblockDate.isBefore(LocalDate.now())) {
+                                    // 해제일이 오늘 이후면 해제 상태
+                                    isUnblocked = true;
+                                    unblockUntilDate = formattedDate;
+                                } else {
+                                    // 해제 기간이 만료됨
+                                    expiredUnblockInfo = "통제해제 기간만료 (" + formattedDate + "까지였음)";
+                                }
+                            }
+                        } catch (Exception e) {
+                            log.warn("Failed to parse MngValText as date: {}", mngValText);
+                        }
+                    }
+                }
+            }
+
+            // salesControlReason에 만료된 해제 정보 추가
+            if (salesControlReason != null && expiredUnblockInfo != null) {
+                salesControlReason = salesControlReason + ", " + expiredUnblockInfo;
+            }
+
+            // 결과 조합
+            response.put("success", true);
+            response.put("customerSeq", customerSeq);
+            response.put("companyType", companyType);
+            response.put("isSalesControlled", isSalesControlled);
+            response.put("salesControlReason", salesControlReason);
+            response.put("isUnblocked", isUnblocked);
+            response.put("unblockUntilDate", unblockUntilDate);
+
+            // 최종 상태: 매출통제 중이지만 해제 기간이면 해제 상태
+            boolean finalStatus = isSalesControlled && !isUnblocked;
+            response.put("finalSalesControlStatus", finalStatus);
+            response.put("statusMessage", getStatusMessage(isSalesControlled, isUnblocked, unblockUntilDate));
+
+        } catch (Exception e) {
+            log.error("Error checking sales control status", e);
+            response.put("success", false);
+            response.put("error", "매출통제 확인 실패: " + e.getMessage());
+        }
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * ERP API 호출하여 매출통제 정보 조회 (tnt_SWAPISLSalesBondAnalRemainderInfo)
+     * 채권회의 workflow와 동일한 파라미터 구조 사용
+     */
+    private Map<String, Object> callErpSalesControlApi(Long customerSeq, String companyType) {
+        try {
+            // API URL 선택 (TNT vs DYS) - tnt_SWAPISLSalesBondAnalRemainderInfo 사용
+            String apiUrl = "TNT".equalsIgnoreCase(companyType)
+                    ? "http://220.73.213.73/Angkor.Ylw.Common.HttpExecute/RestOutsideService.svc/OpenApi/IsStoredProcedure/tnt_SWAPISLSalesBondAnalRemainderInfo"
+                    : "http://220.73.213.73:81/Angkor.Ylw.Common.HttpExecute/RestOutsideService.svc/OpenApi/IsStoredProcedure/tnt_SWAPISLSalesBondAnalRemainderInfo";
+
+            // Credentials
+            String certId = "TNT".equalsIgnoreCase(companyType) ? "TNT_CRM" : "DYS_CRM";
+            String certKey = "TNT".equalsIgnoreCase(companyType)
+                    ? "9836164F-3601-4DBB-9D6D-54685CD89B95"
+                    : "A66C1236-0FFF-4F1D-96AC-27B5839548F9";
+            String dsn = "TNT".equalsIgnoreCase(companyType) ? "tnt_bis" : "dys_bis";
+            String dsnOper = "TNT".equalsIgnoreCase(companyType) ? "tnt_oper" : "dys_oper";
+
+            // 기준년월 (오늘 기준 YYYYMM)
+            String stdYM = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMM"));
+
+            // Build request payload - 채권회의 workflow와 동일한 구조
+            Map<String, Object> payload = new LinkedHashMap<>();
+            Map<String, Object> root = new LinkedHashMap<>();
+            payload.put("ROOT", root);
+
+            root.put("certId", certId);
+            root.put("certKey", certKey);
+            root.put("dsnOper", dsnOper);
+            root.put("dsnBis", dsn);
+            root.put("dsn", dsn);
+            root.put("companySeq", "1");
+            root.put("languageSeq", 1);
+            root.put("securityType", 0);
+            root.put("userId", "");
+
+            Map<String, Object> data = new LinkedHashMap<>();
+            root.put("data", data);
+
+            Map<String, Object> dataRoot = new LinkedHashMap<>();
+            data.put("ROOT", dataRoot);
+
+            // DataBlock1을 List로 구성 (채권회의 API와 동일)
+            List<Map<String, Object>> dataBlock1List = new ArrayList<>();
+            Map<String, Object> dataBlock1 = new LinkedHashMap<>();
+            dataBlock1.put("StdYM", stdYM);
+            dataBlock1.put("BizUnit", "");
+            dataBlock1.put("CustSeq", String.valueOf(customerSeq));
+            dataBlock1.put("EmpSeq", "");
+            dataBlock1.put("SMQryType", "1078004");
+            dataBlock1.put("IncludeMiNote", "1");
+            dataBlock1.put("PAGE_NO", "1");
+            dataBlock1.put("PAGE_SIZE", "10");
+            dataBlock1List.add(dataBlock1);
+            dataRoot.put("DataBlock1", dataBlock1List);
+
+            // HTTP Call
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(payload, headers);
+
+            RestTemplate restTemplate = new RestTemplate();
+            ResponseEntity<Map> responseEntity = restTemplate.exchange(apiUrl, HttpMethod.POST, entity, Map.class);
+
+            if (responseEntity.getStatusCode().is2xxSuccessful() && responseEntity.getBody() != null) {
+                Map<String, Object> result = new HashMap<>();
+                Map<String, Object> responseBody = responseEntity.getBody();
+
+                // Parse response - DataBlock1 직접 접근 (채권회의와 동일)
+                Object dataBlock1Obj = responseBody.get("DataBlock1");
+                if (dataBlock1Obj instanceof List) {
+                    result.put("items", dataBlock1Obj);
+                } else {
+                    // ROOT 안에 있을 수도 있음
+                    Object rootObj = responseBody.get("ROOT");
+                    if (rootObj instanceof Map) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> rootMap = (Map<String, Object>) rootObj;
+                        dataBlock1Obj = rootMap.get("DataBlock1");
+                        if (dataBlock1Obj instanceof List) {
+                            result.put("items", dataBlock1Obj);
+                        }
+                    }
+                }
+
+                return result;
+            }
+        } catch (Exception e) {
+            log.error("Error calling ERP sales control API", e);
+        }
+        return null;
+    }
+
+    /**
+     * ERP DB 직접 조회하여 매출통제 해제 여부 확인
+     * select MngValText from _TDACustUserDefine where mngserl=108720008 and custseq=?
+     */
+    private Map<String, Object> queryErpUnblockDate(Long customerSeq, String companyType) {
+        try {
+            // TNT vs DYS DB 선택
+            JdbcTemplate erpJdbc = "TNT".equalsIgnoreCase(companyType) ? mssqlJdbc : mssqlDysJdbc;
+            if (erpJdbc == null) {
+                log.warn("ERP JDBC is not available for companyType: {}", companyType);
+                return null;
+            }
+
+            // ERP DB 직접 조회
+            String sql = "SELECT MngValText FROM _TDACustUserDefine WHERE MngSerl = 108720008 AND CustSeq = ?";
+            List<Map<String, Object>> results = erpJdbc.queryForList(sql, customerSeq);
+
+            if (results != null && !results.isEmpty()) {
+                Map<String, Object> row = results.get(0);
+                Map<String, Object> result = new HashMap<>();
+                result.put("MngValText", row.get("MngValText"));
+                log.info("ERP unblock query result for customerSeq {}: MngValText={}", customerSeq, row.get("MngValText"));
+                return result;
+            } else {
+                log.info("No unblock record found for customerSeq: {}", customerSeq);
+            }
+        } catch (Exception e) {
+            log.error("Error querying ERP unblock date for customerSeq: {}", customerSeq, e);
+        }
+        return null;
+    }
+
+    /**
+     * MngValText를 LocalDate로 파싱
+     */
+    private LocalDate parseUnblockDate(String dateStr) {
+        if (dateStr == null || dateStr.trim().isEmpty()) {
+            return null;
+        }
+
+        dateStr = dateStr.trim();
+
+        // 다양한 날짜 형식 시도
+        String[] patterns = {"yyyyMMdd", "yyyy-MM-dd", "yyyy/MM/dd", "yyyy.MM.dd"};
+        for (String pattern : patterns) {
+            try {
+                return LocalDate.parse(dateStr, DateTimeFormatter.ofPattern(pattern));
+            } catch (Exception e) {
+                // 다음 패턴 시도
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 상태 메시지 생성
+     */
+    private String getStatusMessage(boolean isSalesControlled, boolean isUnblocked, String unblockUntilDate) {
+        if (!isSalesControlled) {
+            return "정상 (매출통제 없음)";
+        }
+        if (isUnblocked && unblockUntilDate != null) {
+            return "매출통제 해제됨 (" + unblockUntilDate + "까지)";
+        }
+        return "매출통제 중";
+    }
+
+    /**
+     * 금액을 읽기 쉬운 형식으로 포맷팅 (예: 55256104.0 → 55,256,104원)
+     */
+    private String formatCurrency(double amount) {
+        java.text.NumberFormat formatter = java.text.NumberFormat.getNumberInstance(java.util.Locale.KOREA);
+        formatter.setMaximumFractionDigits(0);
+        return formatter.format(Math.round(amount)) + "원";
+    }
+
+    /**
+     * Term 필드명을 한국어 기간 표시로 변환
+     * Before30 → 1개월미만, Term60 → 2개월미만, Term90 → 3개월, ...
+     * Term365 → 12개월 미만, Over365 → 12개월 초과
+     */
+    private String convertTermFieldToKorean(String termField) {
+        switch (termField) {
+            case "Before30": return "1개월미만";
+            case "Term60": return "2개월미만";
+            case "Term90": return "3개월";
+            case "Term120": return "4개월";
+            case "Term150": return "5개월";
+            case "Term180": return "6개월";
+            case "Term210": return "7개월";
+            case "Term240": return "8개월";
+            case "Term270": return "9개월";
+            case "Term300": return "10개월";
+            case "Term330": return "11개월";
+            case "Term365": return "12개월미만";
+            case "Over365": return "12개월초과";
+            default: return termField;
         }
     }
 }

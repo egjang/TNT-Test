@@ -23,12 +23,15 @@ import { TMStatus } from '../lead/TMStatus'
 import { OrderSheet } from '../order/OrderSheet'
 import { SalesAssign } from '../sales_assign/SalesAssign'
 import { OrderList } from '../order/OrderList'
+import { OrderToDelivery } from '../order/OrderToDelivery'
 import { Item360 } from '../item/Item360'
 import { SalesDashboard } from '../sales_dashboard/SalesDashboard'
 import { SalesMgmtSales } from '../sales_mgmt/SalesMgmtSales'
 import { SalesMgmtReceivables } from '../sales_mgmt/SalesMgmtReceivables'
 import { SalesMgmtActivities } from '../sales_mgmt/SalesMgmtActivities'
 import { ExpiryInventoryAGView } from '../inventory/ExpiryInventoryAGView'
+import PromotionPlanning from '../inventory/PromotionPlanning'
+import PromotionEvaluation from '../inventory/PromotionEvaluation'
 import { ItemUnitAnalysis } from '../lab/ItemUnitAnalysis'
 import { PriceSim } from '../lab/PriceSim'
 import { PriceSimUnit } from '../lab/PriceSimUnit'
@@ -36,6 +39,7 @@ import { PriceSimulation } from '../lab/PriceSimulation'
 import { VibeWorkspace } from '../lab/VibeWorkspace'
 import { GoogleRAG } from '../lab/GoogleRAG'
 import { TNTChat } from '../lab/TNTChat'
+import { ErpSpAnalysis } from '../lab/ErpSpAnalysis'
 import { ARAgingDashboard } from '../credit/ARAgingDashboard'
 import { CreditMeetingList } from '../credit/CreditMeetingList'
 import { CreditMeetingDetail } from '../credit/CreditMeetingDetail'
@@ -94,6 +98,8 @@ export function MainView({ selectedKey }: Props) {
         <OrderSheet />
       ) : selectedKey === 'order-list' ? (
         <OrderList />
+      ) : selectedKey === 'order-to-delivery' ? (
+        <OrderToDelivery />
       ) : selectedKey === 'inquiry' ? (
         <Inquiry />
       ) : selectedKey === 'estimate' ? (
@@ -102,6 +108,10 @@ export function MainView({ selectedKey }: Props) {
         <Item360 />
       ) : selectedKey === 'inventory:expiry-ag' ? (
         <ExpiryInventoryAGView />
+      ) : selectedKey === 'inventory:promotion' ? (
+        <PromotionPlanning />
+      ) : selectedKey === 'inventory:promotion-eval' ? (
+        <PromotionEvaluation />
       ) : selectedKey === 'complaint' ? (
         <Complaint />
       ) : selectedKey === 'credit:ar-aging' ? (
@@ -141,6 +151,8 @@ export function MainView({ selectedKey }: Props) {
         <PriceSimUnit />
       ) : selectedKey === 'lab:price-simulation' ? (
         <PriceSimulation />
+      ) : selectedKey === 'lab:erp-sp' ? (
+        <ErpSpAnalysis />
       ) : selectedKey === 'demand:list' && flags.demandManagement ? (
         <DemandList />
       ) : selectedKey === 'sales-targets' && flags.demandManagement ? (

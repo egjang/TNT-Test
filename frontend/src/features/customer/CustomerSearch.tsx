@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import moneyIconUrl from '../../assets/icons/money.svg'
 import demandIconUrl from '../../assets/icons/demand.svg'
 import { tone } from '../../ui/tone'
+import { CustomerGraphPopup } from './CustomerGraphPopup'
 
 function fmt(input?: string | Date | null): string {
   if (!input) return ''
@@ -67,6 +68,7 @@ export function CustomerSearch({ compact = false, maxHeight, context = 'list', o
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   // Removed demand presence prefetch to improve performance
   const [bubble, setBubble] = useState<{ open: boolean; x: number; y: number; row?: Customer; loading?: boolean; error?: string | null; data?: any[] }>({ open: false, x: 0, y: 0 })
+  const [graphPopup, setGraphPopup] = useState<{ open: boolean; customer?: Customer }>({ open: false })
   const [recentMap, setRecentMap] = useState<Record<number, boolean>>({})
   const [demandMap, setDemandMap] = useState<Record<number, boolean>>({})
   const [initialized, setInitialized] = useState(false)
@@ -505,6 +507,12 @@ export function CustomerSearch({ compact = false, maxHeight, context = 'list', o
                 }
                 setMenu({ open: false, x: 0, y: 0 })
               }}>활동등록</button>
+              {context === 'c360' && (
+                <button className="context-item" onClick={() => {
+                  setGraphPopup({ open: true, customer: menu.row })
+                  setMenu({ open: false, x: 0, y: 0 })
+                }}>Graph 보기</button>
+              )}
             </div>
           )}
           {bubble.open && bubble.row && (
@@ -599,6 +607,21 @@ export function CustomerSearch({ compact = false, maxHeight, context = 'list', o
       <div style={{ marginTop: 12 }}>
         {table}
       </div>
+
+      {/* Graph Popup */}
+      {graphPopup.open && graphPopup.customer && (
+        <CustomerGraphPopup
+          customer={{
+            customerId: graphPopup.customer.customerId,
+            customerName: graphPopup.customer.customerName,
+            customerSeq: graphPopup.customer.customerSeq,
+            empSeq: graphPopup.customer.empSeq,
+            empId: typeof window !== 'undefined' ? localStorage.getItem('tnt.sales.empId') || undefined : undefined,
+            empName: graphPopup.customer.empName
+          }}
+          onClose={() => setGraphPopup({ open: false })}
+        />
+      )}
     </section>
   )
 }

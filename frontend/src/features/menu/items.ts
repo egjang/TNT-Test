@@ -111,7 +111,9 @@ export function getAllMenuItems(): MenuItem[] {
         label: '재고',
         icon: Warehouse,
         children: [
-          { key: 'inventory:expiry-ag', label: '유통기한재고' },
+          { key: 'inventory:expiry-ag', label: '유통기한 재고' },
+          { key: 'inventory:promotion', label: '프로모션 기획' },
+          { key: 'inventory:promotion-eval', label: '프로모션 평가' },
         ],
       }
       : null,
@@ -120,6 +122,7 @@ export function getAllMenuItems(): MenuItem[] {
       label: '수주장',
       icon: ShoppingCart,
       children: [
+        { key: 'order-to-delivery', label: '수주~배송' },
         { key: 'order-list', label: '수주장 조회' },
         { key: 'order-sheet', label: '수주장 등록' },
       ],
@@ -162,6 +165,7 @@ export function getAllMenuItems(): MenuItem[] {
         { key: 'lab:standard-map', label: '시도 경계 지도' },
         { key: 'lab:quote', label: '견적(CD)' },
         { key: 'lab:ok-tnt', label: 'OKR TNT' },
+        { key: 'lab:erp-sp', label: 'ERP SP분석' },
       ],
     },
   ]

@@ -20,13 +20,21 @@ public class MultiDataSourceConfig {
     @Value("${app.datasource.pg.password}")
     private String pgPass;
 
-    // MSSQL
+    // MSSQL (TNT)
     @Value("${app.datasource.mssql.url}")
     private String msUrl;
     @Value("${app.datasource.mssql.username}")
     private String msUser;
     @Value("${app.datasource.mssql.password}")
     private String msPass;
+
+    // MSSQL (DYS)
+    @Value("${app.datasource.mssql-dys.url}")
+    private String msDysUrl;
+    @Value("${app.datasource.mssql-dys.username}")
+    private String msDysUser;
+    @Value("${app.datasource.mssql-dys.password}")
+    private String msDysPass;
 
     @Bean(name = "pgDataSource")
     @Primary
@@ -67,5 +75,28 @@ public class MultiDataSourceConfig {
     @Bean(name = "mssqlJdbcTemplate")
     public JdbcTemplate mssqlJdbcTemplate(@org.springframework.beans.factory.annotation.Qualifier("mssqlDataSource") DataSource mssqlDataSource) {
         return new JdbcTemplate(mssqlDataSource);
+    }
+
+    @Bean(name = "mssqlDysDataSource")
+    public DataSource mssqlDysDataSource() {
+        String urlWithTimeout = msDysUrl;
+        if (!msDysUrl.contains("loginTimeout=")) {
+            urlWithTimeout = msDysUrl + (msDysUrl.contains("?") ? "&" : ";") + "loginTimeout=5";
+        }
+        if (!urlWithTimeout.contains("connectTimeout=")) {
+            urlWithTimeout = urlWithTimeout + ";connectTimeout=5000";
+        }
+
+        return DataSourceBuilder.create()
+                .driverClassName("com.microsoft.sqlserver.jdbc.SQLServerDriver")
+                .url(urlWithTimeout)
+                .username(msDysUser)
+                .password(msDysPass)
+                .build();
+    }
+
+    @Bean(name = "mssqlDysJdbcTemplate")
+    public JdbcTemplate mssqlDysJdbcTemplate(@org.springframework.beans.factory.annotation.Qualifier("mssqlDysDataSource") DataSource mssqlDysDataSource) {
+        return new JdbcTemplate(mssqlDysDataSource);
     }
 }
